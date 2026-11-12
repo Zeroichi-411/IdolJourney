@@ -270,7 +270,7 @@ function membersTab(state: GameState): string {
     ${ms
       .map(
         (m) => `<tr class="${m.isPlayer ? 'me' : ''}">
-        <td>${esc(m.name)}</td><td>${m.generation}</td><td>${m.lastRank ?? '—'}</td>
+        <td>${m.prodigy ? '<span class="star" title="逸材">★</span>' : ''}${esc(m.name)}</td><td>${m.generation}</td><td>${m.lastRank ?? '—'}</td>
         <td>${m.vocal}</td><td>${m.dance}</td><td>${m.visual}</td><td>${m.attention}</td>
         <td>${m.isPlayer ? '' : state.player.affinity[m.id] ?? 0}</td></tr>`,
       )
@@ -387,6 +387,13 @@ function formationView(state: GameState, f: Formation): string {
     <p class="eyebrow">${f.singleNo}thシングル フォーメーション発表</p>
     <h2 class="single-title">「${esc(f.title)}」</h2>
     ${f.electionCenter ? '<p class="small muted center-text">総選挙1位メンバーがセンターを務めます</p>' : ''}
+    ${
+      f.prodigyCenter
+        ? `<p class="prodigy-note">⚡ 加入したばかりの${getMember(state, f.centerId)?.generation ?? ''}期生 ${esc(
+            nameOf(state, f.centerId),
+          )} が、いきなりセンターに大抜擢！</p>`
+        : ''
+    }
     <div class="formation">${rowsHtml}<div class="stage-front">STAGE FRONT</div></div>
     ${genSummary}
     ${myLine}
@@ -482,7 +489,13 @@ export function eventModal(state: GameState, ev: GameEvent, remaining: number): 
            <p>${ev.joinTurn !== undefined ? esc(formatTurn(ev.joinTurn)) : '近日'}に新メンバーが加入予定。後輩に負けていられない！</p>`
         : `<p class="eyebrow">新メンバー加入</p><h2>${ev.generation}期生 ${ev.names.length}名が加入！</h2>
            <p class="names">${ev.names.map(esc).join('、')}</p>
-           <p class="small muted">先輩として、交流して仲良くなるのもいいかもしれない。</p>`;
+           ${
+             ev.prodigyName
+               ? `<div class="prodigy-box"><p class="prodigy-head">★ 規格外の新人が現れた</p>
+                  <p>中でも<b>${esc(ev.prodigyName)}</b>は、歌もダンスもビジュアルも先輩に引けを取らない「数年に1人の逸材」と業界でも話題になっている。</p>
+                  <p class="small">次のシングルでは、いきなりセンターに抜擢されるかもしれない…！</p></div>`
+               : '<p class="small muted">先輩として、交流して仲良くなるのもいいかもしれない。</p>'
+           }`;
       break;
     case 'ending':
       tone = ev.end.reason === 'fired' ? 'bad' : 'event';

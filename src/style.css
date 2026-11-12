@@ -939,3 +939,23 @@ table.members tr.me td {
 .choice-btn:hover {
   border-color: var(--accent);
 }
+
+/* ---------- v3: 逸材 ---------- */
+.prodigy-box {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 2px solid var(--visual);
+  background: color-mix(in srgb, var(--visual) 14%, var(--surface));
+}
+.prodigy-head {
+  margin: 0 0 4px;
+  font-weight: 800;
+  color: var(--warn);
+}
+.prodigy-note {
+  text-align: center;
+  font-weight: 800;
+  color: var(--warn);
+  margin: 4px 0 0;
+}

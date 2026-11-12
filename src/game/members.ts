@@ -3,6 +3,7 @@ import {
   AUDITION_MAX,
   AUDITION_MIN,
   AUDITION_THRESHOLD,
+  PRODIGY_CHANCE,
   SENBATSU_SIZE,
   TURNS_PER_YEAR,
 } from './constants';
@@ -134,5 +135,24 @@ export function processAudition(state: GameState, rng: Rng): GameEvent | null {
   state.nextGeneration++;
   state.auditionTurn = null;
   addLog(state, `${gen}期生 ${count}名が加入！`, 'event');
-  return { kind: 'audition', generation: gen, names: newcomers.map((m) => m.name), announced: false };
+
+  // 低確率で、いきなりセンターを任せられるほどの逸材が現れる
+  let prodigyName: string | undefined;
+  if (rng.chance(PRODIGY_CHANCE)) {
+    const star = rng.pick(newcomers);
+    makeProdigy(state, star, rng);
+    prodigyName = star.name;
+    addLog(state, `${gen}期生の${star.name}が「数年に1人の逸材」と話題に`, 'event');
+  }
+  return { kind: 'audition', generation: gen, names: newcomers.map((m) => m.name), announced: false, prodigyName };
+}
+
+/** 新メンバーを、グループ上位に匹敵する能力と注目度を持つ逸材にする */
+export function makeProdigy(state: GameState, m: Member, rng: Rng): void {
+  const veterans = activeMembers(state).filter((x) => x.joinedTurn < m.joinedTurn);
+  const best = (f: (x: Member) => number) => Math.max(60, ...veterans.map(f));
+  for (const k of STATS) m[k] = Math.round(best((x) => x[k]) * rng.range(0.85, 1.0));
+  m.attention = Math.round(best((x) => x.attention) * rng.range(0.7, 0.9));
+  m.talent = Math.round(rng.range(1.8, 2.1) * 100) / 100;
+  m.prodigy = true;
 }

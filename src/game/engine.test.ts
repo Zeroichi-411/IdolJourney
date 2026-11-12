@@ -8,7 +8,7 @@ import { advanceTurn, canGraduate, newGame, resolveChoice } from './engine';
 import { doInteract, networkBonus } from './actions';
 import { DAILY_EVENTS, applyDailyChoice, rollDailyEvent } from './dailyEvents';
 import { freshnessBonus } from './formation';
-import { processAudition } from './members';
+import { makeProdigy, processAudition } from './members';
 import { Rng } from './rng';
 import { SNS_GENRES } from './snsPosts';
 import type { Action, GameState } from './types';
@@ -419,5 +419,77 @@ describe('連続センター補正', () => {
     withStreak(s, s.playerId, 6);
     s.electionCenterId = s.playerId;
     expect(buildFormation(s, new Rng(1)).centerId).toBe(s.playerId);
+  });
+});
+
+describe('逸材', () => {
+  function addRookies(s: GameState, n: number) {
+    for (let i = 0; i < n; i++) {
+      s.members.push({
+        id: 200 + i, name: `新人${i}`, generation: 2, isPlayer: false, vocal: 20, dance: 20, visual: 20,
+        attention: 10, joinedTurn: s.turn, graduated: false, focus: 'dance', talent: 1,
+      });
+    }
+  }
+
+  it('逸材は先輩の上位に匹敵する能力を持つ', () => {
+    const s = fresh();
+    s.turn = 30;
+    addRookies(s, 1);
+    const star = s.members[s.members.length - 1];
+    makeProdigy(s, star, new Rng(1));
+    const vets = activeMembers(s).filter((m) => m.generation === 1);
+    for (const k of ['vocal', 'dance', 'visual'] as const) {
+      expect(star[k]).toBeGreaterThanOrEqual(Math.max(...vets.map((m) => m[k])) * 0.85 - 1);
+    }
+    expect(star.prodigy).toBe(true);
+    expect(star.talent).toBeGreaterThanOrEqual(1.8);
+  });
+
+  it('加入後初のシングルでセンターに大抜擢され、2作目以降は通常選考', () => {
+    const s = fresh();
+    const p = getPlayer(s);
+    p.vocal = p.dance = p.visual = 900;
+    p.attention = 900;
+    addRookies(s, 10);
+    const star = s.members[s.members.length - 1];
+    star.prodigy = true;
+    const f1 = buildFormation(s, new Rng(1));
+    expect(f1.centerId).toBe(star.id);
+    expect(f1.prodigyCenter).toBe(true);
+    s.formations.push(f1);
+    const f2 = buildFormation(s, new Rng(1));
+    expect(f2.centerId).toBe(p.id);
+    expect(f2.prodigyCenter).toBe(false);
+  });
+
+  it('総選挙1位の確約センターが優先される', () => {
+    const s = fresh();
+    addRookies(s, 10);
+    const star = s.members[s.members.length - 1];
+    star.prodigy = true;
+    s.electionCenterId = s.playerId;
+    const f = buildFormation(s, new Rng(1));
+    expect(f.centerId).toBe(s.playerId);
+    expect(f.prodigyCenter).toBe(false);
+    expect(f.slots[1].memberId).toBe(star.id);
+  });
+
+  it('オーディションでたまに逸材が現れる (低確率)', () => {
+    let found = 0;
+    const trials = 300;
+    for (let seed = 0; seed < trials; seed++) {
+      const s = fresh(seed);
+      s.auditionTurn = s.turn;
+      const ev = processAudition(s, new Rng(seed));
+      if (ev?.kind === 'audition' && ev.prodigyName) {
+        found++;
+        const star = s.members.find((m) => m.name === ev.prodigyName)!;
+        expect(star.prodigy).toBe(true);
+        expect(star.generation).toBe(2);
+      }
+    }
+    expect(found).toBeGreaterThan(trials * 0.1);
+    expect(found).toBeLessThan(trials * 0.32);
   });
 });

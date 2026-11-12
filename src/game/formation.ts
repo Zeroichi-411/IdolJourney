@@ -111,13 +111,25 @@ export function buildFormation(state: GameState, rng: Rng): Formation {
     scored.splice(SENBATSU_SIZE - missing.length, 0, ...missing);
   }
 
-  // 総選挙1位はセンター確約
+  // 加入後初めてのシングルを迎える逸材は、センターに大抜擢
+  let prodigyCenter = false;
+  const debut = scored.find(
+    (x) => x.m.prodigy && !state.formations.some((f) => f.slots.some((sl) => sl.memberId === x.m.id)),
+  );
+  if (debut) {
+    scored.splice(scored.indexOf(debut), 1);
+    scored.unshift(debut);
+    prodigyCenter = true;
+  }
+
+  // 総選挙1位はセンター確約 (逸材の大抜擢より優先)
   let electionCenter = false;
   if (state.electionCenterId !== null) {
     const idx = scored.findIndex((x) => x.m.id === state.electionCenterId);
     if (idx > 0) {
       const [c] = scored.splice(idx, 1);
       scored.unshift(c);
+      prodigyCenter = false;
     }
     electionCenter = idx >= 0;
     state.electionCenterId = null;
@@ -143,6 +155,7 @@ export function buildFormation(state: GameState, rng: Rng): Formation {
     rows,
     centerId: slots[0]?.memberId ?? -1,
     electionCenter,
+    prodigyCenter,
   };
 }
 

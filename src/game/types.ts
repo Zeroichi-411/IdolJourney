@@ -25,8 +25,10 @@ export interface Member {
   lastRank?: number;
   /** NPC が好んで伸ばす能力 */
   focus: StatKey;
-  /** NPC の成長速度・人気の伸びやすさ (0.6〜1.5) */
+  /** NPC の成長速度・人気の伸びやすさ (0.6〜1.5、逸材は2前後) */
   talent: number;
+  /** オーディションで現れた「逸材」 */
+  prodigy?: boolean;
 }
 
 export type RowNo = 1 | 2 | 3;
@@ -50,6 +52,8 @@ export interface Formation {
   centerId: number;
   /** 総選挙1位がセンターに選ばれた回か */
   electionCenter: boolean;
+  /** 加入直後の逸材がセンターに大抜擢された回か */
+  prodigyCenter?: boolean;
 }
 
 export interface ElectionEntry {
@@ -167,5 +171,13 @@ export type GameEvent =
   | { kind: 'formation'; formation: Formation }
   | { kind: 'election'; election: ElectionResult }
   | { kind: 'graduation'; names: string[]; lines: string[] }
-  | { kind: 'audition'; generation: number; names: string[]; announced: boolean; joinTurn?: number }
+  | {
+      kind: 'audition';
+      generation: number;
+      names: string[];
+      announced: boolean;
+      joinTurn?: number;
+      /** 逸材メンバーの名前 */
+      prodigyName?: string;
+    }
   | { kind: 'ending'; end: GameEnd };

@@ -73,3 +73,6 @@ export const ROOKIE_SENBATSU_SLOTS = 2;
 /** 連続センター補正: 連続回数 × 係数 × 本人の基礎スコア を減点 (総選挙による確約センターは対象外) */
 export const CENTER_STREAK_PENALTY = 0.08;
 export const CENTER_STREAK_PENALTY_MAX = 0.5;
+
+/** オーディションに「逸材」が混ざる確率 (1回のオーディションあたり) */
+export const PRODIGY_CHANCE = 0.2;
