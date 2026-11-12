@@ -4,11 +4,18 @@
 
 ## 遊び方
 
+### いちばん簡単な方法（インストール不要）
+
+`play/IdolJourney.html` をダブルクリックしてブラウザで開くだけで遊べます。
+
+### 開発する場合（Node.js が必要）
+
 ```bash
 npm install
 npm run dev      # 開発サーバー起動 → 表示されたURLをブラウザで開く
 npm test         # ゲームロジックのテスト
 npm run build    # dist/ に静的ファイルを出力
+npm run build:single  # play/IdolJourney.html（1ファイル版）を再生成
 ```
 
 ## ゲームの流れ
