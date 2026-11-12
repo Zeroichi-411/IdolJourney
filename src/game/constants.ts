@@ -76,3 +76,7 @@ export const CENTER_STREAK_PENALTY_MAX = 0.5;
 
 /** オーディションに「逸材」が混ざる確率 (1回のオーディションあたり) */
 export const PRODIGY_CHANCE = 0.2;
+
+/** 公開URL (シェア用) */
+export const GAME_URL = 'https://zeroichi-411.github.io/IdolJourney/';
+export const SHARE_HASHTAG = 'IdolJourney';

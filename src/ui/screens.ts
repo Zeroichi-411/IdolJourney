@@ -1,6 +1,7 @@
 import { centerStreak, centerStreakPenaltyRate } from '../game/formation';
 import { networkBonus, popularIds, quarrelChance, snsOdds } from '../game/actions';
 import { fillText, getDailyEvent } from '../game/dailyEvents';
+import { centerShareText, electionShareText, endingShareText, shareUrl } from '../game/share';
 import { formatTurn, nextElectionTurn, nextSingleTurn, toDate } from '../game/calendar';
 import { ATTENTION_MAX, STAMINA_MAX, STAT_MAX } from '../game/constants';
 import { canGraduate, endingSummary, isPlayerBlocked } from '../game/engine';
@@ -345,6 +346,10 @@ export function mainScreen(state: GameState, view: ViewState): string {
 
 /* ---------- イベント表示 (モーダル) ---------- */
 
+function shareLink(text: string, label = 'Xでシェア'): string {
+  return `<a class="btn share" href="${esc(shareUrl(text))}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
+}
+
 function memberChip(state: GameState, id: number, rank: number, center: boolean): string {
   const m = getMember(state, id);
   const me = id === state.playerId;
@@ -382,7 +387,8 @@ function formationView(state: GameState, f: Formation): string {
     .join('');
   let myLine: string;
   if (!mine) myLine = '<p class="result bad-text">今回は活動休止中のため参加できませんでした…</p>';
-  else if (mine.rank === 1) myLine = '<p class="result good-text">🎉 あなたがセンターに選ばれました！</p>';
+  else if (mine.rank === 1)
+    myLine = `<p class="result good-text">🎉 あなたがセンターに選ばれました！</p><div class="share-row">${shareLink(centerShareText(state, f))}</div>`;
   else if (mine.row === 1) myLine = `<p class="result good-text">あなたは1列目（序列${mine.rank}位）！フロントメンバーです！</p>`;
   else if (mine.row !== 0) myLine = `<p class="result">あなたは${mine.row}列目（序列${mine.rank}位）。選抜メンバー入り！</p>`;
   else myLine = `<p class="result">あなたは今回アンダーメンバー（序列${mine.rank}位）。次こそ選抜入りを目指そう。</p>`;
@@ -431,7 +437,7 @@ function electionView(state: GameState, e: ElectionResult): string {
     </ol>
     ${
       mine?.rank === 1
-        ? '<p class="result good-text">👑 あなたが総選挙1位！次のシングルのセンターに決定！</p>'
+        ? `<p class="result good-text">👑 あなたが総選挙1位！次のシングルのセンターに決定！</p><div class="share-row">${shareLink(electionShareText(state, e))}</div>`
         : mine && mine.rank <= 16
           ? `<p class="result good-text">あなたは${mine.rank}位でランクイン！</p>`
           : mine
@@ -583,6 +589,7 @@ export function endingScreen(state: GameState): string {
       }
       <p class="small muted">最終ステータス：ボーカル ${p.vocal} ／ ダンス ${p.dance} ／ ビジュアル ${p.visual} ／ 注目度 ${p.attention}</p>
     </section>
+    ${shareLink(endingShareText(state), 'Xで結果をシェア')}
     <button class="btn primary wide" data-act="restart">もう一度アイドルになる</button>
   </main>`;
 }

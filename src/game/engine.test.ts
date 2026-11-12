@@ -493,3 +493,33 @@ describe('逸材', () => {
     expect(found).toBeLessThan(trials * 0.32);
   });
 });
+
+describe('Xシェア', () => {
+  it('エンディングの投稿文に称号と実績が入り、X の文字数上限に収まる', async () => {
+    const { endingShareText, shareUrl, xWeightedLength } = await import('./share');
+    const s = fresh();
+    s.groupName = 'あいうえおかきくけこさしすせそ';
+    getPlayer(s).name = 'あいうえおかきくけこさし';
+    s.player.achievements.centerCount = 12;
+    s.player.achievements.bestRank = 1;
+    s.player.achievements.bestElection = 1;
+    s.player.achievements.electionWins = 3;
+    s.ended = { reason: 'graduate', turn: 191 };
+    const text = endingShareText(s);
+    expect(text).toContain('伝説のセンター');
+    expect(text).toContain('センター12回');
+    expect(text).toContain('総選挙最高1位');
+    expect(xWeightedLength(text)).toBeLessThanOrEqual(280);
+    const url = new URL(shareUrl(text));
+    expect(url.searchParams.get('text')).toBe(text);
+    expect(url.searchParams.get('hashtags')).toBe('IdolJourney');
+    expect(url.searchParams.get('url')).toBe('https://zeroichi-411.github.io/IdolJourney/');
+  });
+
+  it('卒業命令の文言になる', async () => {
+    const { endingShareText } = await import('./share');
+    const s = fresh();
+    s.ended = { reason: 'fired', turn: 30 };
+    expect(endingShareText(s)).toContain('卒業命令');
+  });
+});
