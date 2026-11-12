@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isElectionTurn, isSingleTurn, toTurn } from './calendar';
 import { AUDITION_DELAY, MAX_TURNS } from './constants';
 import { applyElection, runElection } from './election';
-import { arrangeRow, buildFormation, rowOf } from './formation';
+import { arrangeRow, buildFormation, centerStreak, rowOf } from './formation';
 import { doSns } from './actions';
 import { advanceTurn, canGraduate, newGame, resolveChoice } from './engine';
 import { doInteract, networkBonus } from './actions';
@@ -384,5 +384,40 @@ describe('期の若さ', () => {
     const senbatsu = f.slots.filter((x) => x.row !== 0).map((x) => x.memberId);
     expect(senbatsu).toHaveLength(16);
     expect(senbatsu.filter((id) => id >= 100)).toHaveLength(2);
+  });
+});
+
+describe('連続センター補正', () => {
+  function withStreak(s: GameState, id: number, n: number) {
+    for (let i = 0; i < n; i++) {
+      s.formations.push({ singleNo: i + 1, title: `t${i}`, turn: 0, slots: [], rows: [], centerId: id, electionCenter: false });
+    }
+  }
+
+  it('連続回数を数える', () => {
+    const s = fresh();
+    withStreak(s, 5, 1);
+    withStreak(s, s.playerId, 3);
+    expect(centerStreak(s, s.playerId)).toBe(3);
+    expect(centerStreak(s, 5)).toBe(0);
+  });
+
+  it('連続センターが続くとセンターを外れる', () => {
+    const s = fresh();
+    const p = getPlayer(s);
+    const rival = activeMembers(s).find((m) => !m.isPlayer)!;
+    p.vocal = p.dance = p.visual = 300;
+    rival.vocal = rival.dance = rival.visual = 270;
+    p.attention = rival.attention = 100;
+    expect(buildFormation(structuredClone(s), new Rng(1)).centerId).toBe(p.id);
+    withStreak(s, p.id, 3);
+    expect(buildFormation(structuredClone(s), new Rng(1)).centerId).toBe(rival.id);
+  });
+
+  it('総選挙1位の確約センターは減点の影響を受けない', () => {
+    const s = fresh();
+    withStreak(s, s.playerId, 6);
+    s.electionCenterId = s.playerId;
+    expect(buildFormation(s, new Rng(1)).centerId).toBe(s.playerId);
   });
 });

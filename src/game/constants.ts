@@ -69,3 +69,7 @@ export const POPULAR_TOP = 5;
 export const FRESHNESS_WEIGHT = 0.3;
 /** 加入1年以内の最新期から最低限選抜入りさせる人数 */
 export const ROOKIE_SENBATSU_SLOTS = 2;
+
+/** 連続センター補正: 連続回数 × 係数 × 本人の基礎スコア を減点 (総選挙による確約センターは対象外) */
+export const CENTER_STREAK_PENALTY = 0.08;
+export const CENTER_STREAK_PENALTY_MAX = 0.5;

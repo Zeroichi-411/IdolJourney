@@ -1,6 +1,8 @@
 import {
   FORMATION_ATTENTION_WEIGHT,
   FORMATION_NOISE,
+  CENTER_STREAK_PENALTY,
+  CENTER_STREAK_PENALTY_MAX,
   FRESHNESS_WEIGHT,
   ROOKIE_SENBATSU_SLOTS,
   SENBATSU_ROWS,
@@ -70,12 +72,31 @@ export function rowOf(rank: number): RowNo | 0 {
   return 0;
 }
 
+/** 直近のシングルで何作連続センターを務めているか */
+export function centerStreak(state: GameState, memberId: number): number {
+  let n = 0;
+  for (let i = state.formations.length - 1; i >= 0; i--) {
+    if (state.formations[i].centerId !== memberId) break;
+    n++;
+  }
+  return n;
+}
+
+/** 連続センターによる減点率 (0〜上限) */
+export function centerStreakPenaltyRate(streak: number): number {
+  return Math.min(CENTER_STREAK_PENALTY_MAX, streak * CENTER_STREAK_PENALTY);
+}
+
 export function buildFormation(state: GameState, rng: Rng): Formation {
   // 謹慎中・ケガ中のプレイヤーは選考対象外
   const playerOut = state.player.suspendedTurns > 0 || state.player.injuredTurns > 0;
   const eligible = activeMembers(state).filter((m) => !(m.isPlayer && playerOut));
   const bonus = freshnessBonus(eligible);
-  const scored = eligible.map((m) => ({ m, s: formationScore(m, rng) + (bonus.get(m.id) ?? 0) }));
+  const scored = eligible.map((m) => {
+    // 連続センターが続くほど減点 (マンネリ防止)
+    const penalty = baseFormationScore(m) * centerStreakPenaltyRate(centerStreak(state, m.id));
+    return { m, s: formationScore(m, rng) + (bonus.get(m.id) ?? 0) - penalty };
+  });
   scored.sort((a, b) => b.s - a.s);
 
   // 期待の新人枠: 加入1年以内の最新期の上位メンバーは最低でも選抜に入れる

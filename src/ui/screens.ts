@@ -1,3 +1,4 @@
+import { centerStreak, centerStreakPenaltyRate } from '../game/formation';
 import { networkBonus, popularIds, quarrelChance, snsOdds } from '../game/actions';
 import { fillText, getDailyEvent } from '../game/dailyEvents';
 import { formatTurn, nextElectionTurn, nextSingleTurn, toDate } from '../game/calendar';
@@ -118,6 +119,14 @@ function networkLine(state: GameState): string {
   }</p>`;
 }
 
+function streakLine(state: GameState): string {
+  const n = centerStreak(state, state.playerId);
+  if (n === 0) return '';
+  return `<p class="small warn-text">${n}作連続センター中：次のシングル選考は −${Math.round(
+    centerStreakPenaltyRate(n) * 100,
+  )}%（総選挙1位なら影響なし）</p>`;
+}
+
 function playerCard(state: GameState): string {
   const p = getPlayer(state);
   const last = state.formations[state.formations.length - 1];
@@ -142,6 +151,7 @@ function playerCard(state: GameState): string {
       <div class="stat"><span class="stat-label">体力</span>${bar(state.player.stamina, STAMINA_MAX, 'stamina')}<span class="stat-val">${state.player.stamina}</span></div>
     </div>
     ${networkLine(state)}
+    ${streakLine(state)}
   </section>`;
 }
 
