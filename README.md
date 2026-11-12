@@ -2,6 +2,8 @@
 
 新結成の女性アイドルグループ（1期生20名）のひとりとして、卒業までの日々を生きるブラウザゲームです。
 
+**▶ ブラウザで遊ぶ: https://zeroichi-411.github.io/IdolJourney/** （スマホ・PC対応、インストール不要）
+
 ## 遊び方
 
 ### いちばん簡単な方法（インストール不要）
@@ -37,3 +39,4 @@ npm run build:single  # play/IdolJourney.html（1ファイル版）を再生成
 - `src/game/` … DOM に依存しないゲームロジック（`engine.ts` がターン進行の中心、調整値は `constants.ts`、SNS 投稿の文章データは `snsPosts.ts`）
 - `src/ui/` … 画面の描画
 - `src/main.ts` … 画面遷移と入力処理
+- `.github/workflows/deploy.yml` … 既定ブランチへの push でテスト → ビルド → GitHub Pages へ自動公開

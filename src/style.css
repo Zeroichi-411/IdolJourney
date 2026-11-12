@@ -959,3 +959,10 @@ table.members tr.me td {
   color: var(--warn);
   margin: 4px 0 0;
 }
+
+.disclaimer {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 4px 0 0;
+}

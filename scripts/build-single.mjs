@@ -1,6 +1,7 @@
 // Node.js なしで遊べる、ダブルクリックで開ける1ファイル版 HTML を生成する
+// (index.html の <head> を流用し、スクリプトと CSS を埋め込む)
 import { build } from 'esbuild';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const result = await build({
   entryPoints: ['src/main.ts'],
@@ -15,21 +16,13 @@ const result = await build({
 const js = result.outputFiles.find((f) => f.path.endsWith('.js')).text;
 const css = result.outputFiles.find((f) => f.path.endsWith('.css'))?.text ?? '';
 
-const html = `<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="color-scheme" content="light dark" />
-<title>IdolJourney</title>
-<style>${css}</style>
-</head>
-<body>
-<div id="app"></div>
-<script>${js.replace(/<\/script/gi, '<\\/script')}</script>
-</body>
-</html>
-`;
+const template = readFileSync('index.html', 'utf8');
+const moduleTag = /<script type="module" src="\/src\/main\.ts"><\/script>/;
+if (!moduleTag.test(template)) throw new Error('index.html に main.ts の script タグが見つかりません');
+
+const html = template
+  .replace('</head>', () => `  <style>${css}</style>\n  </head>`)
+  .replace(moduleTag, () => `<script>${js.replace(/<\/script/gi, '<\\/script')}</script>`);
 
 mkdirSync('play', { recursive: true });
 writeFileSync('play/IdolJourney.html', html);

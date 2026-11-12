@@ -87,14 +87,17 @@ export function titleScreen(saved: GameState | null): string {
     <section class="card rules">
       <h2>あそびかた</h2>
       <ul>
-        <li>1ヶ月を前半・後半に分け、毎回1つ行動を選びます。</li>
-        <li>3・6・9・12月にシングル発売。能力と注目度で<b>フォーメーション</b>が決まります。</li>
+        <li>1ヶ月を前半・後半に分け、毎回1つ行動を選びます。ときどき起きる出来事では、選択次第で結果が変わります。</li>
+        <li>3・6・9・12月にシングル発売。能力と注目度で<b>フォーメーション</b>が決まります。連続センターが続くと選ばれにくくなります。</li>
+        <li>人気メンバーと仲良くなると、自分にも注目が集まります。ただし喧嘩には注意。</li>
         <li>2年目からは毎年8月に<b>総選挙</b>。こちらは注目度がより重視されます。1位は次のシングルのセンター！</li>
         <li>SNSはバズれば注目度が急上昇。でも炎上すると謹慎や、最悪の場合<b>卒業命令</b>も…。</li>
-        <li>メンバーは年々卒業し、18人以下になると新期生オーディションが開かれます。</li>
+        <li>メンバーは年々卒業し、18人以下になると新期生オーディションが開かれます。まれに規格外の新人も…。</li>
         <li>3年目以降は自分のタイミングで卒業を発表できます（最長8年）。</li>
+        <li>進行はこのブラウザに自動で保存されます。</li>
       </ul>
     </section>
+    <p class="disclaimer">このゲームはフィクションです。登場する人物・グループ名・団体などは、実在のものとは関係ありません。</p>
   </main>`;
 }
 
@@ -115,7 +118,7 @@ function networkLine(state: GameState): string {
     .filter((m) => !m.isPlayer && (state.player.affinity[m.id] ?? 0) > 0)
     .sort((a, b) => (state.player.affinity[b.id] ?? 0) * b.attention - (state.player.affinity[a.id] ?? 0) * a.attention)[0];
   return `<p class="network small">人脈ボーナス：注目度 <b>+${net}</b>/ターン${
-    best ? `<span class="muted">（主に ${esc(best.name)} のおかげ）</span>` : '<span class="muted">（人気メンバーと仲良くなると増えます）</span>'
+    best && net > 0 ? `<span class="muted">（主に ${esc(best.name)} のおかげ）</span>` : '<span class="muted">（人気メンバーと仲良くなると増えます）</span>'
   }</p>`;
 }
 
