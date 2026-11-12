@@ -1,9 +1,9 @@
 import './style.css';
-import { advanceTurn, newGame } from './game/engine';
+import { advanceTurn, newGame, resolveChoice } from './game/engine';
 import { randomSeed } from './game/rng';
 import { clearSave, loadGame, saveGame } from './game/save';
 import type { Action, GameEvent, GameState, SnsGenreId, StatKey } from './game/types';
-import { endingScreen, eventModal, mainScreen, titleScreen, type Panel, type Tab, type ViewState } from './ui/screens';
+import { choiceModal, endingScreen, eventModal, mainScreen, titleScreen, type Panel, type Tab, type ViewState } from './ui/screens';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -18,7 +18,10 @@ function render(): void {
     return;
   }
   const base = state.ended && queue.length === 0 ? endingScreen(state) : mainScreen(state, view);
-  app.innerHTML = base + (queue.length ? eventModal(state, queue[0], queue.length) : '');
+  let modal = '';
+  if (queue.length) modal = eventModal(state, queue[0], queue.length);
+  else if (state.pendingChoice && !state.ended) modal = choiceModal(state);
+  app.innerHTML = base + modal;
   app.querySelector<HTMLButtonElement>('[data-act="next-event"]')?.focus();
 }
 
@@ -94,6 +97,15 @@ app.addEventListener('click', (e) => {
     case 'wait':
       act({ type: 'wait' });
       return;
+    case 'choose': {
+      if (!state) return;
+      const r = resolveChoice(state, Number(el.dataset.idx));
+      state = r.state;
+      queue = r.events;
+      saveGame(state);
+      render();
+      return;
+    }
   }
 });
 

@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { doSns } from './actions';
 import { isElectionTurn, isSingleTurn, toTurn } from './calendar';
 import { AUDITION_DELAY, MAX_TURNS } from './constants';
 import { applyElection, runElection } from './election';
 import { arrangeRow, buildFormation, rowOf } from './formation';
-import { advanceTurn, canGraduate, newGame } from './engine';
+import { doSns } from './actions';
+import { advanceTurn, canGraduate, newGame, resolveChoice } from './engine';
+import { doInteract, networkBonus } from './actions';
+import { DAILY_EVENTS, applyDailyChoice, rollDailyEvent } from './dailyEvents';
+import { freshnessBonus } from './formation';
 import { processAudition } from './members';
 import { Rng } from './rng';
 import { SNS_GENRES } from './snsPosts';
@@ -215,7 +218,13 @@ describe('advanceTurn', () => {
     let singles = 0;
     let auditions = 0;
     let i = 0;
+    let choices = 0;
     while (!s.ended) {
+      if (s.pendingChoice) {
+        choices++;
+        s = resolveChoice(s, 0).state;
+        continue;
+      }
       const a: Action = s.player.stamina < 40 ? { type: 'rest' } : { type: 'lesson', stat: (['vocal', 'dance', 'visual'] as const)[i % 3] };
       i++;
       const r = advanceTurn(s, a);
@@ -232,5 +241,148 @@ describe('advanceTurn', () => {
     expect(elections).toBe(7);
     expect(auditions).toBeGreaterThan(0);
     expect(s.elections[0].year).toBe(2);
+    // 日常イベントは 1/4〜1/2 程度のターンで発生
+    expect(choices).toBeGreaterThan(MAX_TURNS * 0.2);
+    expect(choices).toBeLessThan(MAX_TURNS * 0.5);
+  });
+});
+
+describe('日常イベント', () => {
+  it('データが正しい (確率の合計が1、選択肢が2つ以上)', () => {
+    for (const e of DAILY_EVENTS) {
+      expect(e.choices.length).toBeGreaterThanOrEqual(2);
+      for (const c of e.choices) {
+        const sum = c.outcomes.reduce((a, o) => a + o.p, 0);
+        expect(sum).toBeCloseTo(1, 5);
+      }
+    }
+  });
+
+  it('全イベントを解決でき、相手の名前が差し込まれる', () => {
+    const s = fresh();
+    const npc = activeMembers(s).find((m) => !m.isPlayer)!;
+    // 後輩・仲良し条件のイベントも出せるようにしておく
+    s.player.affinity[npc.id] = 50;
+    npc.generation = 2;
+    const rng = new Rng(11);
+    for (const e of DAILY_EVENTS) {
+      e.choices.forEach((_, i) => {
+        const c = structuredClone(s);
+        const ev = applyDailyChoice(c, { eventId: e.id, memberId: e.target === 'none' ? undefined : npc.id }, i, rng);
+        expect(ev.kind).toBe('action');
+        if (ev.kind === 'action') {
+          expect(ev.lines.join('')).not.toContain('{member}');
+          expect(ev.title).toBe(e.title);
+        }
+      });
+    }
+  });
+
+  it('後輩がいないときは後輩イベントが出ない', () => {
+    const s = fresh();
+    const rng = new Rng(3);
+    for (let i = 0; i < 500; i++) {
+      const p = rollDailyEvent(s, rng, 1);
+      expect(p?.eventId).not.toBe('junior_advice');
+      expect(p?.eventId).not.toBe('friend_trouble');
+    }
+  });
+
+  it('選択待ちの間はターンが進まず、resolveChoice で解決される', () => {
+    const s = fresh();
+    s.pendingChoice = { eventId: 'midnight_snack' };
+    const blocked = advanceTurn(s, { type: 'rest' });
+    expect(blocked.state.turn).toBe(s.turn);
+    const r = resolveChoice(s, 1);
+    expect(r.state.pendingChoice).toBeNull();
+    expect(getPlayer(r.state).visual).toBe(getPlayer(s).visual + 4);
+    expect(r.events[0].kind).toBe('action');
+    expect(s.pendingChoice).not.toBeNull(); // 元の state は変わらない
+  });
+});
+
+describe('交流', () => {
+  it('仲良し度が上がることも、喧嘩して下がることもある', () => {
+    const s = fresh();
+    const npc = activeMembers(s).find((m) => !m.isPlayer)!;
+    s.player.affinity[npc.id] = 50;
+    const rng = new Rng(21);
+    let up = 0;
+    let down = 0;
+    for (let i = 0; i < 400; i++) {
+      const c = structuredClone(s);
+      doInteract(c, npc.id, rng);
+      const after = c.player.affinity[npc.id];
+      if (after > 50) up++;
+      if (after < 50) down++;
+    }
+    expect(up).toBeGreaterThan(down);
+    expect(down).toBeGreaterThan(400 * 0.1);
+  });
+
+  it('人気メンバーと仲が良いほど注目度が上がりやすい', () => {
+    const s = fresh();
+    const npcs = activeMembers(s).filter((m) => !m.isPlayer);
+    const star = npcs[0];
+    const minor = npcs[1];
+    star.attention = 500;
+    minor.attention = 20;
+    s.player.affinity[star.id] = 80;
+    s.player.affinity[minor.id] = 80;
+    const gain = (id: number) => {
+      let total = 0;
+      const rng = new Rng(5);
+      for (let i = 0; i < 200; i++) {
+        const c = structuredClone(s);
+        const before = getPlayer(c).attention;
+        doInteract(c, id, rng);
+        total += getPlayer(c).attention - before;
+      }
+      return total;
+    };
+    expect(gain(star.id)).toBeGreaterThan(gain(minor.id) * 3);
+  });
+
+  it('人脈ボーナスは仲良し度と相手の人気に比例する (上限あり)', () => {
+    const s = fresh();
+    expect(networkBonus(s)).toBe(0);
+    const star = activeMembers(s).find((m) => !m.isPlayer)!;
+    star.attention = 500;
+    s.player.affinity[star.id] = 100;
+    expect(networkBonus(s)).toBe(2);
+    for (const m of activeMembers(s)) {
+      m.attention = 999;
+      s.player.affinity[m.id] = 100;
+    }
+    expect(networkBonus(s)).toBe(6);
+  });
+});
+
+describe('期の若さ', () => {
+  it('1期生しかいなければ補正なし、新しい期ほど加点', () => {
+    const s = fresh();
+    expect([...freshnessBonus(activeMembers(s)).values()].every((v) => v === 0)).toBe(true);
+    const npcs = activeMembers(s).filter((m) => !m.isPlayer);
+    npcs[0].generation = 2;
+    npcs[1].generation = 3;
+    const b = freshnessBonus(activeMembers(s));
+    expect(b.get(npcs[1].id)!).toBeGreaterThan(b.get(npcs[0].id)!);
+    expect(b.get(npcs[0].id)!).toBeGreaterThan(0);
+    expect(b.get(s.playerId)).toBe(0);
+  });
+
+  it('加入1年以内の新期生は能力が低くても選抜に入る', () => {
+    const s = fresh();
+    // 2期生10名を能力最低で追加
+    for (let i = 0; i < 10; i++) {
+      s.members.push({
+        id: 100 + i, name: `新人${i}`, generation: 2, isPlayer: false, vocal: 1, dance: 1, visual: 1,
+        attention: 0, joinedTurn: s.turn, graduated: false, focus: 'vocal', talent: 1,
+      });
+    }
+    const f = buildFormation(s, new Rng(1));
+    const senbatsu = f.slots.filter((x) => x.row !== 0).map((x) => x.memberId);
+    expect(senbatsu).toHaveLength(16);
+    expect(senbatsu.filter((id) => id >= 100)).toHaveLength(2);
   });
 });

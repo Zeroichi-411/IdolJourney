@@ -1,10 +1,17 @@
 import {
   INJURY_CHANCE,
   INJURY_STAMINA_LINE,
+  INTERACT_FAME_RATE,
   INTERACT_RECOVERY,
   LESSON_GAIN_MAX,
   LESSON_GAIN_MIN,
   LESSON_STAMINA_COST,
+  NETWORK_MAX,
+  NETWORK_RATE,
+  POPULAR_TOP,
+  QUARREL_BASE,
+  QUARREL_CLOSE_REDUCTION,
+  QUARREL_TIRED_BONUS,
   REST_RECOVERY,
   SPECIALTY_MULT,
   STAMINA_MAX,
@@ -90,6 +97,52 @@ export function doRest(state: GameState, rng: Rng): GameEvent {
   return { kind: 'action', title: '休み', tone: 'good', lines };
 }
 
+const QUARREL_REASONS = [
+  '遅刻したことをきっかけに険悪な空気になってしまった',
+  'お互いの推しの話で口論になってしまった',
+  '冗談のつもりの一言で{member}を怒らせてしまった',
+  '振付の細かい部分で言い合いになった',
+  'どちらが先に連絡するかで揉めてしまった',
+  '貸していた服を汚されて、つい強く言ってしまった',
+];
+
+const ACTIVITIES = [
+  'ランチに行った',
+  'カラオケに行った',
+  '楽屋で恋バナをした',
+  '一緒に買い物に出かけた',
+  'お互いの家で映画を見た',
+  '夜遅くまで電話で話した',
+];
+
+/** 注目度上位の「人気メンバー」 */
+export function popularIds(state: GameState): Set<number> {
+  return new Set(
+    activeMembers(state)
+      .filter((m) => !m.isPlayer)
+      .sort((a, b) => b.attention - a.attention)
+      .slice(0, POPULAR_TOP)
+      .map((m) => m.id),
+  );
+}
+
+/** 仲の良いメンバーの人気が自分に波及する、毎ターンの注目度ボーナス */
+export function networkBonus(state: GameState): number {
+  let sum = 0;
+  for (const m of activeMembers(state)) {
+    if (m.isPlayer) continue;
+    sum += ((state.player.affinity[m.id] ?? 0) / 100) * m.attention * NETWORK_RATE;
+  }
+  return Math.min(NETWORK_MAX, Math.round(sum * 10) / 10);
+}
+
+export function quarrelChance(state: GameState, affinity: number): number {
+  let q = QUARREL_BASE;
+  if (state.player.stamina < 30) q += QUARREL_TIRED_BONUS;
+  if (affinity >= 80) q -= QUARREL_CLOSE_REDUCTION;
+  return q;
+}
+
 export function doInteract(state: GameState, targetId: number, rng: Rng): GameEvent {
   const p = getPlayer(state);
   const target = getMember(state, targetId);
@@ -97,18 +150,61 @@ export function doInteract(state: GameState, targetId: number, rng: Rng): GameEv
     return { kind: 'action', title: '交流', tone: 'info', lines: ['相手が見つからなかった。'] };
   }
   const before = state.player.affinity[targetId] ?? 0;
+  const roll = rng.next();
+  const q = quarrelChance(state, before);
+
+  if (roll < q) {
+    // 喧嘩
+    const after = clamp(before - rng.int(5, 15), 0, 100);
+    state.player.affinity[targetId] = after;
+    const st = changeStamina(state, -3);
+    const reason = rng.pick(QUARREL_REASONS).split('{member}').join(target.name);
+    addLog(state, `${target.name}と喧嘩してしまった（仲良し度${after}）`, 'bad');
+    return {
+      kind: 'action',
+      title: '喧嘩してしまった…',
+      tone: 'bad',
+      lines: [
+        `${target.name}と${rng.pick(ACTIVITIES)}が、${reason}。`,
+        `仲良し度 ${before} → ${after}　体力 ${signed(st)}`,
+        state.player.stamina < 30 ? '疲れてイライラしていたのも良くなかったかもしれない…。' : '仲直りするには少し時間がかかりそうだ。',
+      ],
+    };
+  }
+
+  if (roll < q + 0.07) {
+    // 空振り
+    const after = clamp(before + rng.int(2, 4), 0, 100);
+    state.player.affinity[targetId] = after;
+    const rec = changeStamina(state, INTERACT_RECOVERY);
+    addLog(state, `${target.name}と交流（仲良し度${after}）`, 'info');
+    return {
+      kind: 'action',
+      title: '他アイドルと交流',
+      tone: 'info',
+      lines: [
+        `${target.name}と${rng.pick(ACTIVITIES)}が、なんとなく会話が弾まなかった。`,
+        `仲良し度 ${before} → ${after}　体力 ${signed(rec)}`,
+      ],
+    };
+  }
+
   const after = clamp(before + rng.int(10, 16), 0, 100);
   state.player.affinity[targetId] = after;
   const rec = changeStamina(state, INTERACT_RECOVERY);
-  const activity = rng.pick([
-    'ランチに行った',
-    'カラオケに行った',
-    '楽屋で恋バナをした',
-    '一緒に買い物に出かけた',
-    'お互いの家で映画を見た',
-    '夜遅くまで電話で話した',
-  ]);
-  const lines = [`${target.name}と${activity}。`, `仲良し度 ${before} → ${after}　体力 ${signed(rec)}`];
+  const lines = [`${target.name}と${rng.pick(ACTIVITIES)}。`, `仲良し度 ${before} → ${after}　体力 ${signed(rec)}`];
+
+  // 人気メンバーと仲が良いほど、自分にも注目が集まる
+  const fame = Math.round(target.attention * (after / 100) * INTERACT_FAME_RATE);
+  if (fame >= 1) {
+    const d = addAttention(p, fame);
+    const popular = popularIds(state).has(target.id);
+    lines.push(
+      popular
+        ? `人気メンバーの${target.name}とのオフショットがファンの間で話題に！（注目度 ${signed(d)}）`
+        : `${target.name}のファンにも名前を覚えてもらえた。（注目度 ${signed(d)}）`,
+    );
+  }
   if (after >= 60 && rng.chance(0.35)) {
     const stat = target.focus;
     const d = addStat(p, stat, rng.int(4, 8));
@@ -190,7 +286,9 @@ export function doSns(state: GameState, genreChoice: SnsGenreId | 'random', rng:
     if (fired) addLog(state, '運営から卒業を命じられた…', 'bad');
   } else if (roll < odds.flame + odds.buzz) {
     const reason = rng.pick(genre.buzzReasons);
-    const attentionDelta = addAttention(p, rng.int(reason.gain[0], reason.gain[1]));
+    // メンバー写真は相手の人気にも左右される
+    const partnerFame = partner ? Math.round(partner.attention * 0.05) : 0;
+    const attentionDelta = addAttention(p, rng.int(reason.gain[0], reason.gain[1]) + partnerFame);
     ach.buzzCount++;
     result = {
       genre: genre.id,

@@ -49,3 +49,23 @@ export const INTERACT_RECOVERY = 10;
 
 /** 謹慎中の毎ターンの注目度減少 */
 export const SUSPENSION_ATTENTION_LOSS = 3;
+
+/** 日常イベントの発生率 (1ターンあたり) */
+export const DAILY_EVENT_RATE = 0.35;
+
+/** 交流 */
+export const QUARREL_BASE = 0.18;
+export const QUARREL_TIRED_BONUS = 0.1;
+export const QUARREL_CLOSE_REDUCTION = 0.05;
+/** 交流相手の人気が自分の注目度に波及する係数 (相手の注目度 × 仲良し度/100 × 係数) */
+export const INTERACT_FAME_RATE = 0.04;
+/** 人脈ボーナス: Σ(仲良し度/100 × 相手の注目度) × 係数 を毎ターン加算 */
+export const NETWORK_RATE = 0.004;
+export const NETWORK_MAX = 6;
+/** 「人気メンバー」とみなす注目度の上位人数 */
+export const POPULAR_TOP = 5;
+
+/** シングル選考の「期の若さ」補正: 最新期に 平均基礎スコア × 係数 を加点 */
+export const FRESHNESS_WEIGHT = 0.3;
+/** 加入1年以内の最新期から最低限選抜入りさせる人数 */
+export const ROOKIE_SENBATSU_SLOTS = 2;

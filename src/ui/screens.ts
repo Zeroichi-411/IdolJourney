@@ -1,4 +1,5 @@
-import { snsOdds } from '../game/actions';
+import { networkBonus, popularIds, quarrelChance, snsOdds } from '../game/actions';
+import { fillText, getDailyEvent } from '../game/dailyEvents';
 import { formatTurn, nextElectionTurn, nextSingleTurn, toDate } from '../game/calendar';
 import { ATTENTION_MAX, STAMINA_MAX, STAT_MAX } from '../game/constants';
 import { canGraduate, endingSummary, isPlayerBlocked } from '../game/engine';
@@ -107,6 +108,16 @@ function statusChips(state: GameState): string {
   return chips.join('');
 }
 
+function networkLine(state: GameState): string {
+  const net = networkBonus(state);
+  const best = activeMembers(state)
+    .filter((m) => !m.isPlayer && (state.player.affinity[m.id] ?? 0) > 0)
+    .sort((a, b) => (state.player.affinity[b.id] ?? 0) * b.attention - (state.player.affinity[a.id] ?? 0) * a.attention)[0];
+  return `<p class="network small">人脈ボーナス：注目度 <b>+${net}</b>/ターン${
+    best ? `<span class="muted">（主に ${esc(best.name)} のおかげ）</span>` : '<span class="muted">（人気メンバーと仲良くなると増えます）</span>'
+  }</p>`;
+}
+
 function playerCard(state: GameState): string {
   const p = getPlayer(state);
   const last = state.formations[state.formations.length - 1];
@@ -130,6 +141,7 @@ function playerCard(state: GameState): string {
       <div class="stat"><span class="stat-label">注目度</span>${bar(p.attention, ATTENTION_MAX, 'attention')}<span class="stat-val">${p.attention}</span></div>
       <div class="stat"><span class="stat-label">体力</span>${bar(state.player.stamina, STAMINA_MAX, 'stamina')}<span class="stat-val">${state.player.stamina}</span></div>
     </div>
+    ${networkLine(state)}
   </section>`;
 }
 
@@ -182,18 +194,22 @@ function actionArea(state: GameState, view: ViewState): string {
       </div>
     </div>`;
   } else if (view.panel === 'interact') {
+    const popular = popularIds(state);
     const others = activeMembers(state)
       .filter((m) => !m.isPlayer)
-      .sort((a, b) => (state.player.affinity[b.id] ?? 0) - (state.player.affinity[a.id] ?? 0) || a.id - b.id);
+      .sort((a, b) => b.attention - a.attention || a.id - b.id);
     panel = `<div class="panel">
       <div class="panel-head"><b>誰と過ごす？</b><button class="link" data-act="close-panel">閉じる</button></div>
+      <p class="small muted">注目度の高いメンバーと仲良くなるほど、自分にも注目が集まります。ただし喧嘩して仲が悪くなることも…。</p>
+      ${state.player.stamina < 30 ? `<p class="warn-text small">※ 疲れてイライラしているので喧嘩しやすくなっています（喧嘩率 約${Math.round(quarrelChance(state, 0) * 100)}%）</p>` : ''}
       <div class="member-pick">
       ${others
         .map((m) => {
           const aff = state.player.affinity[m.id] ?? 0;
           return `<button class="pick" data-act="interact" data-id="${m.id}">
-            <span>${esc(m.name)} <small class="muted">${m.generation}期</small></span>
-            <span class="aff">${'♥'.repeat(Math.ceil(aff / 20))}<small class="muted"> ${aff}</small></span>
+            <span class="pick-name">${popular.has(m.id) ? '<span class="star" title="人気メンバー">★</span>' : ''}${esc(m.name)} <small class="muted">${m.generation}期</small>
+              <small class="pick-att">注目 ${m.attention}</small></span>
+            <span class="aff">${'♥'.repeat(Math.ceil(aff / 20)) || '<span class="muted">♡</span>'}<small class="muted"> ${aff}</small></span>
           </button>`;
         })
         .join('')}
@@ -320,7 +336,7 @@ function memberChip(state: GameState, id: number, rank: number, center: boolean)
   const m = getMember(state, id);
   const me = id === state.playerId;
   return `<div class="fm ${center ? 'center' : ''} ${me ? 'me' : ''}">
-    <span class="fm-rank">${rank}</span>
+    <span class="fm-rank">${rank}${m && m.generation > 1 ? `<span class="fm-gen">${m.generation}期</span>` : ''}</span>
     <span class="fm-name">${esc(m?.name ?? '???')}</span>
   </div>`;
 }
@@ -329,6 +345,19 @@ function formationView(state: GameState, f: Formation): string {
   const rankOf = new Map(f.slots.map((s) => [s.memberId, s.rank]));
   const mine = f.slots.find((s) => s.memberId === state.playerId);
   const under = f.slots.filter((s) => s.row === 0);
+  const genCount = new Map<number, number>();
+  for (const sl of f.slots) {
+    if (sl.row === 0) continue;
+    const g = getMember(state, sl.memberId)?.generation ?? 1;
+    genCount.set(g, (genCount.get(g) ?? 0) + 1);
+  }
+  const genSummary =
+    genCount.size > 1
+      ? `<p class="small muted center-text">選抜の内訳：${[...genCount.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([g, n]) => `${g}期生 ${n}人`)
+          .join('／')}</p>`
+      : '';
   const rowsHtml = [...f.rows]
     .map((ids, i) => ({ ids, row: i + 1 }))
     .reverse()
@@ -349,6 +378,7 @@ function formationView(state: GameState, f: Formation): string {
     <h2 class="single-title">「${esc(f.title)}」</h2>
     ${f.electionCenter ? '<p class="small muted center-text">総選挙1位メンバーがセンターを務めます</p>' : ''}
     <div class="formation">${rowsHtml}<div class="stage-front">STAGE FRONT</div></div>
+    ${genSummary}
     ${myLine}
     ${
       under.length
@@ -458,6 +488,30 @@ export function eventModal(state: GameState, ev: GameEvent, remaining: number): 
     <div class="modal ${tone}" role="dialog" aria-modal="true">
       <div class="modal-body">${body}</div>
       <button class="btn primary wide" data-act="next-event" autofocus>${remaining > 1 ? '次へ' : 'OK'}</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- 日常イベントの選択肢 ---------- */
+
+export function choiceModal(state: GameState): string {
+  const pc = state.pendingChoice;
+  const ev = pc ? getDailyEvent(pc.eventId) : undefined;
+  if (!pc || !ev) return '';
+  const member = pc.memberId !== undefined ? getMember(state, pc.memberId) : undefined;
+  return `<div class="overlay">
+    <div class="modal choice" role="dialog" aria-modal="true">
+      <div class="modal-body">
+        <p class="eyebrow">${esc(formatTurn(state.turn))}の出来事</p>
+        <h2>${esc(ev.title)}</h2>
+        <p class="choice-text">${esc(fillText(ev.text, member))}</p>
+        <p class="small muted center-text">どうする？</p>
+      </div>
+      <div class="choice-list">
+        ${ev.choices
+          .map((c, i) => `<button class="btn choice-btn" data-act="choose" data-idx="${i}">${esc(fillText(c.label, member))}</button>`)
+          .join('')}
+      </div>
     </div>
   </div>`;
 }

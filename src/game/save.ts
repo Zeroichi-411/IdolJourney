@@ -16,6 +16,9 @@ export function loadGame(): GameState | null {
     if (!raw) return null;
     const s = JSON.parse(raw) as GameState;
     if (s?.version !== 1 || !Array.isArray(s.members)) return null;
+    // 旧バージョンのセーブデータを補完
+    s.pendingChoice ??= null;
+    for (const m of s.members) m.talent ??= 1;
     return s;
   } catch {
     return null;

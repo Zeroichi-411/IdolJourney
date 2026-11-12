@@ -125,7 +125,15 @@ export interface GameState {
   auditionTurn: number | null;
   /** 次のシングルでセンターが確約されたメンバー (総選挙1位) */
   electionCenterId: number | null;
+  /** 未解決の日常イベント (選択待ち) */
+  pendingChoice: PendingChoice | null;
   ended: GameEnd | null;
+}
+
+export interface PendingChoice {
+  eventId: string;
+  /** イベントの相手メンバー */
+  memberId?: number;
 }
 
 export type SnsGenreId = 'selfie' | 'daily' | 'members' | 'work' | 'honne';

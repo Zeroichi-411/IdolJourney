@@ -1,11 +1,45 @@
-import { FORMATION_ATTENTION_WEIGHT, FORMATION_NOISE, SENBATSU_ROWS } from './constants';
+import {
+  FORMATION_ATTENTION_WEIGHT,
+  FORMATION_NOISE,
+  FRESHNESS_WEIGHT,
+  ROOKIE_SENBATSU_SLOTS,
+  SENBATSU_ROWS,
+  SENBATSU_SIZE,
+  TURNS_PER_YEAR,
+} from './constants';
 import { generateSingleTitle } from './names';
 import type { Rng } from './rng';
 import type { Formation, FormationSlot, GameState, Member, RowNo } from './types';
 import { activeMembers, addAttention, addLog, totalStats } from './util';
 
+export function baseFormationScore(m: Member): number {
+  return totalStats(m) + m.attention * FORMATION_ATTENTION_WEIGHT;
+}
+
 export function formationScore(m: Member, rng: Rng): number {
-  return totalStats(m) + m.attention * FORMATION_ATTENTION_WEIGHT + rng.range(0, FORMATION_NOISE);
+  return baseFormationScore(m) + rng.range(0, FORMATION_NOISE);
+}
+
+/**
+ * 期の若さ (0〜1)。在籍中の期の中で最新期が1、最古の期が0。
+ * 期が1つしかなければ全員0。
+ */
+export function freshness(members: Member[]): Map<number, number> {
+  const gens = [...new Set(members.map((m) => m.generation))].sort((a, b) => a - b);
+  const res = new Map<number, number>();
+  for (const m of members) {
+    res.set(m.id, gens.length <= 1 ? 0 : gens.indexOf(m.generation) / (gens.length - 1));
+  }
+  return res;
+}
+
+/** 期の若さによる加点。運営は新しい期を推したい */
+export function freshnessBonus(members: Member[]): Map<number, number> {
+  const fr = freshness(members);
+  const avg = members.reduce((a, m) => a + baseFormationScore(m), 0) / Math.max(1, members.length);
+  const res = new Map<number, number>();
+  for (const m of members) res.set(m.id, (fr.get(m.id) ?? 0) * FRESHNESS_WEIGHT * avg);
+  return res;
 }
 
 /** 序列に応じた注目度ボーナス */
@@ -40,8 +74,21 @@ export function buildFormation(state: GameState, rng: Rng): Formation {
   // 謹慎中・ケガ中のプレイヤーは選考対象外
   const playerOut = state.player.suspendedTurns > 0 || state.player.injuredTurns > 0;
   const eligible = activeMembers(state).filter((m) => !(m.isPlayer && playerOut));
-  const scored = eligible.map((m) => ({ m, s: formationScore(m, rng) }));
+  const bonus = freshnessBonus(eligible);
+  const scored = eligible.map((m) => ({ m, s: formationScore(m, rng) + (bonus.get(m.id) ?? 0) }));
   scored.sort((a, b) => b.s - a.s);
+
+  // 期待の新人枠: 加入1年以内の最新期の上位メンバーは最低でも選抜に入れる
+  if (scored.length > SENBATSU_SIZE) {
+    const newestGen = Math.max(...eligible.map((m) => m.generation));
+    const rookies = scored
+      .filter((x) => x.m.generation === newestGen && newestGen > 1 && state.turn - x.m.joinedTurn < TURNS_PER_YEAR)
+      .slice(0, ROOKIE_SENBATSU_SLOTS);
+    const missing = rookies.filter((r) => scored.indexOf(r) >= SENBATSU_SIZE);
+    for (const r of missing) scored.splice(scored.indexOf(r), 1);
+    // 選抜の最後尾に入れる (押し出されたメンバーはアンダーへ)
+    scored.splice(SENBATSU_SIZE - missing.length, 0, ...missing);
+  }
 
   // 総選挙1位はセンター確約
   let electionCenter = false;

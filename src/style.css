@@ -887,3 +887,55 @@ table.members tr.me td {
     font-size: 0.66rem;
   }
 }
+
+/* ---------- v2: 日常イベント・交流 ---------- */
+.network {
+  margin: 8px 0 0;
+}
+.network b {
+  color: var(--attention);
+}
+.pick-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+}
+.pick-att {
+  flex-basis: 100%;
+  color: var(--attention);
+  font-size: 0.72rem;
+}
+.star {
+  color: var(--visual);
+  margin-right: 2px;
+}
+.fm-gen {
+  margin-left: 3px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--dance);
+  color: #fff;
+  font-size: 0.58rem;
+}
+.modal.choice {
+  border-top-color: var(--visual);
+}
+.choice-text {
+  font-size: 1rem;
+  margin: 12px 0;
+}
+.choice-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.choice-btn {
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  background: var(--surface-2);
+}
+.choice-btn:hover {
+  border-color: var(--accent);
+}

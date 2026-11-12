@@ -1,4 +1,5 @@
-import { doInteract, doLesson, doRest, doSns } from './actions';
+import { doInteract, doLesson, doRest, doSns, networkBonus } from './actions';
+import { applyDailyChoice, rollDailyEvent } from './dailyEvents';
 import { formatTurn, isElectionTurn, isMonthEnd, isSingleTurn, toDate } from './calendar';
 import {
   ATTENTION_DECAY,
@@ -83,6 +84,7 @@ export function newGame(opts: NewGameOptions): GameState {
     log: [],
     auditionTurn: null,
     electionCenterId: null,
+    pendingChoice: null,
     ended: null,
   };
   addLog(state, `アイドルグループ「${opts.groupName}」が結成！ 1期生20名で活動スタート`, 'event');
@@ -177,7 +179,8 @@ export interface TurnResult {
 
 /** 1ターン (半月) 進める。元の state は変更しない */
 export function advanceTurn(prev: GameState, action: Action): TurnResult {
-  if (prev.ended) return { state: prev, events: [] };
+  // 日常イベントの選択待ちの間はターンを進めない
+  if (prev.ended || prev.pendingChoice) return { state: prev, events: [] };
   const state: GameState = structuredClone(prev);
   const rng = new Rng(state.rngState);
   const events: GameEvent[] = [];
@@ -192,6 +195,9 @@ export function advanceTurn(prev: GameState, action: Action): TurnResult {
   for (const m of activeMembers(state)) {
     addAttention(m, -m.attention * ATTENTION_DECAY);
   }
+  // 仲の良いメンバーの人気が自分にも波及する
+  const net = networkBonus(state);
+  if (net > 0) addAttention(getPlayer(state), net);
 
   if (isMonthEnd(state.turn)) {
     const grads = processGraduations(state, rng);
@@ -226,8 +232,26 @@ export function advanceTurn(prev: GameState, action: Action): TurnResult {
   if (state.turn >= MAX_TURNS) {
     addLog(state, `${formatTurn(state.turn - 1)}をもって${p.name}が卒業`, 'event');
     endGame(state, 'auto', events);
+  } else if (!isPlayerBlocked(state)) {
+    // 次のターンの日常イベント
+    state.pendingChoice = rollDailyEvent(state, rng);
+    state.rngState = rng.state;
   }
   return { state, events };
+}
+
+/** 日常イベントの選択肢を選ぶ。元の state は変更しない */
+export function resolveChoice(prev: GameState, choiceIndex: number): TurnResult {
+  if (!prev.pendingChoice || prev.ended) return { state: prev, events: [] };
+  const state: GameState = structuredClone(prev);
+  const rng = new Rng(state.rngState);
+  const pending = state.pendingChoice!;
+  state.pendingChoice = null;
+  const ev = applyDailyChoice(state, pending, choiceIndex, rng);
+  const p = getPlayer(state);
+  state.player.achievements.peakAttention = Math.max(state.player.achievements.peakAttention, p.attention);
+  state.rngState = rng.state;
+  return { state, events: [ev] };
 }
 
 export interface EndingSummary {
