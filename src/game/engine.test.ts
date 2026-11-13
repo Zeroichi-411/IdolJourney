@@ -523,3 +523,116 @@ describe('Xシェア', () => {
     expect(endingShareText(s)).toContain('卒業命令');
   });
 });
+
+describe('SNSのみんなの反応', () => {
+  const noPlaceholder = (rs: { text: string; name: string }[]) =>
+    rs.every((r) => !/[{}]/.test(r.text) && !/[{}]/.test(r.name));
+
+  it('シングル発表: 3〜4件、センター時は愛称が入る、数値は変わらない', async () => {
+    const { formationReactions, givenName } = await import('./reactions');
+    const s = fresh();
+    getPlayer(s).name = '星野 ひかり';
+    const p = getPlayer(s);
+    p.vocal = p.dance = p.visual = 900;
+    const f = buildFormation(s, new Rng(1));
+    s.formations.push(f);
+    expect(f.centerId).toBe(s.playerId);
+    const before = JSON.stringify(s);
+    const rs = formationReactions(s, f, new Rng(2));
+    expect(JSON.stringify(s)).toBe(before);
+    expect(rs.length).toBeGreaterThanOrEqual(3);
+    expect(rs.length).toBeLessThanOrEqual(4);
+    expect(noPlaceholder(rs)).toBe(true);
+    expect(rs.some((r) => r.text.includes(givenName(p.name)))).toBe(true);
+    expect(givenName('星野 ひかり')).toBe('ひかり');
+    expect(givenName('テスト')).toBe('テスト');
+  });
+
+  it('3作以上連続センターなら否定的な声が混ざる', async () => {
+    const { formationReactions } = await import('./reactions');
+    const s = fresh();
+    const p = getPlayer(s);
+    p.vocal = p.dance = p.visual = 900;
+    let f = buildFormation(s, new Rng(1));
+    for (let i = 0; i < 3; i++) {
+      f = { ...f, centerId: s.playerId };
+      s.formations.push(f);
+    }
+    const rs = formationReactions(s, f, new Rng(3));
+    expect(rs.some((r) => r.tone === 'neg')).toBe(true);
+  });
+
+  it('総選挙とSNS投稿の反応も3〜4件で、同じシードなら同じ内容', async () => {
+    const { electionReactions, snsReactions } = await import('./reactions');
+    const s = fresh();
+    const e = runElection(s, new Rng(4));
+    const a = electionReactions(s, e, new Rng(9));
+    const b = electionReactions(s, e, new Rng(9));
+    expect(a).toEqual(b);
+    expect(a.length).toBeGreaterThanOrEqual(3);
+    expect(noPlaceholder(a)).toBe(true);
+    const rng = new Rng(5);
+    for (let i = 0; i < 300; i++) {
+      const c = structuredClone(s);
+      const r = doSns(c, 'random', rng);
+      const rs = snsReactions(c, r, rng);
+      expect(rs.length).toBeGreaterThanOrEqual(3);
+      expect(rs.length).toBeLessThanOrEqual(4);
+      expect(noPlaceholder(rs)).toBe(true);
+    }
+  });
+
+  it('重度の炎上ほど否定的な声の割合が高い', async () => {
+    const { snsReactions } = await import('./reactions');
+    const s = fresh();
+    const base = {
+      genre: 'honne' as const, genreLabel: '本音・語り', post: 'x', outcome: 'flame' as const, reason: 'y',
+      attentionDelta: -10, suspendedTurns: 0, fired: false,
+    };
+    const ratio = (severity: 1 | 3) => {
+      const rs = snsReactions(s, { ...base, severity }, new Rng(severity));
+      return rs.filter((r) => r.tone === 'neg').length / rs.length;
+    };
+    expect(ratio(3)).toBeGreaterThan(ratio(1));
+  });
+
+  it('世間に知られる日常イベントの結果だけに反応が付く', () => {
+    const s = fresh();
+    const npc = activeMembers(s).find((m) => !m.isPlayer)!;
+    // 握手会の神対応 → 反応あり
+    const pub = applyDailyChoice(structuredClone(s), { eventId: 'handshake' }, 0, new Rng(1));
+    expect(pub.kind === 'action' && pub.reactions && pub.reactions.length > 0).toBe(true);
+    // 深夜のラーメン → 反応なし
+    const priv = applyDailyChoice(structuredClone(s), { eventId: 'midnight_snack' }, 0, new Rng(1));
+    expect(priv.kind === 'action' && priv.reactions === undefined).toBe(true);
+    // 人気メンバーの写真投稿 → 相手の名前が入る
+    for (let seed = 0; seed < 50; seed++) {
+      const ev = applyDailyChoice(structuredClone(s), { eventId: 'popular_dinner', memberId: npc.id }, 0, new Rng(seed));
+      if (ev.kind === 'action' && ev.reactions) {
+        expect(ev.reactions.some((r) => r.text.includes(npc.name))).toBe(true);
+        expect(noPlaceholder(ev.reactions)).toBe(true);
+        return;
+      }
+    }
+    throw new Error('写真投稿の結果が出なかった');
+  });
+
+  it('ターン進行でフォーメーション・総選挙・SNSのイベントに反応が付く', () => {
+    let s = fresh(77);
+    const kinds = new Set<string>();
+    let i = 0;
+    while (!s.ended && s.turn < 60) {
+      if (s.pendingChoice) {
+        s = resolveChoice(s, 0).state;
+        continue;
+      }
+      const a: Action = s.player.stamina < 40 ? { type: 'rest' } : i++ % 3 === 0 ? { type: 'sns', genre: 'work' } : { type: 'lesson', stat: 'dance' };
+      const r = advanceTurn(s, a);
+      for (const e of r.events) {
+        if ((e.kind === 'formation' || e.kind === 'election' || e.kind === 'sns') && e.reactions && e.reactions.length >= 3) kinds.add(e.kind);
+      }
+      s = r.state;
+    }
+    expect(kinds).toEqual(new Set(['formation', 'election', 'sns']));
+  });
+});

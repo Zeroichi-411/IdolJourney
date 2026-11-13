@@ -165,11 +165,23 @@ export interface SnsResult {
   fired: boolean;
 }
 
+export type ReactionTone = 'pos' | 'neg' | 'neutral';
+
+/** SNS 上の「みんなの反応」(演出のみ。数値には影響しない) */
+export interface Reaction {
+  name: string;
+  handle: string;
+  icon: string;
+  text: string;
+  likes: number;
+  tone: ReactionTone;
+}
+
 export type GameEvent =
-  | { kind: 'action'; title: string; lines: string[]; tone: LogKind }
-  | { kind: 'sns'; result: SnsResult }
-  | { kind: 'formation'; formation: Formation }
-  | { kind: 'election'; election: ElectionResult }
+  | { kind: 'action'; title: string; lines: string[]; tone: LogKind; reactions?: Reaction[] }
+  | { kind: 'sns'; result: SnsResult; reactions?: Reaction[] }
+  | { kind: 'formation'; formation: Formation; reactions?: Reaction[] }
+  | { kind: 'election'; election: ElectionResult; reactions?: Reaction[] }
   | { kind: 'graduation'; names: string[]; lines: string[] }
   | {
       kind: 'audition';

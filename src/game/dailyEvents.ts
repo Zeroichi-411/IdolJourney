@@ -2,6 +2,7 @@ import { DAILY_EVENT_RATE, STAMINA_MAX } from './constants';
 import type { Rng } from './rng';
 import type { GameEvent, GameState, LogKind, Member, PendingChoice, StatKey } from './types';
 import { STAT_LABELS } from './types';
+import { type Line, eventReactions, reactNeg as neg, reactNeu as neu, reactPos as pos } from './reactions';
 import { activeMembers, addAttention, addLog, addStat, clamp, getMember, getPlayer, signed } from './util';
 
 export interface EventEffect {
@@ -23,6 +24,8 @@ export interface EventOutcome {
   p: number;
   text: string;
   effect: EventEffect;
+  /** 世間に知られる出来事のときだけ付ける SNS の反応 (演出のみ) */
+  reactions?: Line[];
 }
 
 export interface EventChoice {
@@ -46,7 +49,7 @@ export interface DailyEvent {
   choices: EventChoice[];
 }
 
-const one = (text: string, effect: EventEffect): EventOutcome[] => [{ p: 1, text, effect }];
+const one = (text: string, effect: EventEffect, reactions?: Line[]): EventOutcome[] => [{ p: 1, text, effect, reactions }];
 
 export const DAILY_EVENTS: DailyEvent[] = [
   {
@@ -59,8 +62,8 @@ export const DAILY_EVENTS: DailyEvent[] = [
       {
         label: '体当たりで挑戦する',
         outcomes: [
-          { p: 0.6, text: '全力のリアクションが大ウケ！「あの子誰？」と話題になった。', effect: { attention: 18, stamina: -12 } },
-          { p: 0.4, text: '空回りしてスベってしまった…。でも爪痕は残せた。', effect: { attention: 4, stamina: -12 } },
+          { p: 0.6, text: '全力のリアクションが大ウケ！「あの子誰？」と話題になった。', effect: { attention: 18, stamina: -12 }, reactions: [pos('{nick}のリアクション芸、才能ある'), pos('バラエティの{nick}面白すぎて録画を見返してる'), neu('あの番組に出てた子、{group}の子なんだ')] },
+          { p: 0.4, text: '空回りしてスベってしまった…。でも爪痕は残せた。', effect: { attention: 4, stamina: -12 }, reactions: [pos('{nick}スベってたけど一生懸命で好感度上がった'), neg('ちょっと寒かったかな…')] },
         ],
       },
       {
@@ -79,15 +82,15 @@ export const DAILY_EVENTS: DailyEvent[] = [
       {
         label: '笑顔でサインに応じる',
         outcomes: [
-          { p: 0.7, text: '「神対応だった」とファンが投稿し、ほっこり話題に。', effect: { attention: 6, stamina: -3 } },
-          { p: 0.3, text: '人が集まってきてしまい、マネージャーに少し怒られた。', effect: { attention: 3, stamina: -6 } },
+          { p: 0.7, text: '「神対応だった」とファンが投稿し、ほっこり話題に。', effect: { attention: 6, stamina: -3 }, reactions: [pos('{nick}に街で会った人のレポ、神対応すぎる'), pos('神対応の噂、本当だったんだ')] },
+          { p: 0.3, text: '人が集まってきてしまい、マネージャーに少し怒られた。', effect: { attention: 3, stamina: -6 }, reactions: [neu('さっき駅前に人だかりできてたの{nick}だったのか'), pos('ファンサービスしすぎて心配になる優しさ')] },
         ],
       },
       {
         label: '急いでいるので会釈だけする',
         outcomes: [
           { p: 0.6, text: 'ファンも事情を察してくれたようだ。', effect: {} },
-          { p: 0.4, text: '「塩対応された」と書き込まれ、ちょっとした騒ぎに…。', effect: { attention: -6 } },
+          { p: 0.4, text: '「塩対応された」と書き込まれ、ちょっとした騒ぎに…。', effect: { attention: -6 }, reactions: [neg('{nick}に塩対応されたってレポ見てがっかり'), pos('急いでたなら仕方ないでしょ'), pos('プライベートの時間くらいそっとしておこうよ')] },
         ],
       },
     ],
@@ -102,7 +105,7 @@ export const DAILY_EVENTS: DailyEvent[] = [
       {
         label: '運営に直談判する',
         outcomes: [
-          { p: 0.4, text: '熱意が伝わり、サビ前のソロパートをもらえた！', effect: { attention: 10, vocal: 4 } },
+          { p: 0.4, text: '熱意が伝わり、サビ前のソロパートをもらえた！', effect: { attention: 10, vocal: 4 }, reactions: [pos('新曲のサビ前ソロ、{nick}の声でゾクッとした'), pos('{nick}のソロパート増えてて嬉しい')] },
           { p: 0.6, text: '「わがまま」と受け取られ、スタッフとの空気が少し悪くなった…。', effect: { attention: -4 } },
         ],
       },
@@ -147,7 +150,7 @@ export const DAILY_EVENTS: DailyEvent[] = [
         label: '喜んで行く',
         outcomes: [
           { p: 0.75, text: '{member}と打ち解けて、すっかり意気投合した！', effect: { affinity: 15, stamina: 5 } },
-          { p: 0.25, text: '{member}がSNSに二人の写真を載せ、ファンの間で話題に！', effect: { affinity: 10, attention: 12 } },
+          { p: 0.25, text: '{member}がSNSに二人の写真を載せ、ファンの間で話題に！', effect: { affinity: 10, attention: 12 }, reactions: [pos('{member}と{nick}のツーショット尊い…'), pos('この二人仲良かったんだ！'), neu('{member}の投稿で{nick}を知った')] },
         ],
       },
       {
@@ -171,7 +174,7 @@ export const DAILY_EVENTS: DailyEvent[] = [
         label: '厳しく指導する',
         outcomes: [
           { p: 0.5, text: '{member}は涙をこらえながら食らいついてきた。自分の基礎も見直せた。', effect: { affinity: 5, dance: 4 } },
-          { p: 0.5, text: '{member}を泣かせてしまい、「怖い先輩」という噂が…。', effect: { affinity: -10, attention: -3 } },
+          { p: 0.5, text: '{member}を泣かせてしまい、「怖い先輩」という噂が…。', effect: { affinity: -10, attention: -3 }, reactions: [neg('{nick}って後輩に厳しいらしいね'), pos('厳しいのは愛があるからでしょ')] },
         ],
       },
     ],
@@ -187,8 +190,8 @@ export const DAILY_EVENTS: DailyEvent[] = [
         label: '少しだけ顔を出す',
         outcomes: [
           { p: 0.55, text: '何事もなく楽しい時間を過ごせた。', effect: { stamina: 8 } },
-          { p: 0.3, text: '週刊誌に写真を撮られ、運営から謹慎を言い渡された…。', effect: { attention: -30, suspend: 2 } },
-          { p: 0.15, text: '業界人と知り合い、雑誌の仕事を紹介してもらえた。', effect: { attention: 10, visual: 3 } },
+          { p: 0.3, text: '週刊誌に写真を撮られ、運営から謹慎を言い渡された…。', effect: { attention: -30, suspend: 2 }, reactions: [neg('週刊誌の記事見た。ショック…'), neg('アイドルの自覚なさすぎ'), pos('記事だけで決めつけるのはやめよう')] },
+          { p: 0.15, text: '業界人と知り合い、雑誌の仕事を紹介してもらえた。', effect: { attention: 10, visual: 3 }, reactions: [pos('{nick}が雑誌に！ページめくって二度見した'), neu('最近{nick}の露出増えてない？')] },
         ],
       },
       {
@@ -207,13 +210,13 @@ export const DAILY_EVENTS: DailyEvent[] = [
       {
         label: '無理をして出演する',
         outcomes: [
-          { p: 0.65, text: 'プロ意識でやりきった！スタッフからも感心された。', effect: { attention: 6, stamina: -15 } },
-          { p: 0.35, text: '撮影中に倒れてしまい、しばらく休養することに…。', effect: { stamina: -10, injury: 2 } },
+          { p: 0.65, text: 'プロ意識でやりきった！スタッフからも感心された。', effect: { attention: 6, stamina: -15 }, reactions: [pos('体調悪そうだったのに笑顔でやりきった{nick}、プロすぎる'), pos('無理しないでね…')] },
+          { p: 0.35, text: '撮影中に倒れてしまい、しばらく休養することに…。', effect: { stamina: -10, injury: 2 }, reactions: [pos('{nick}倒れたって本当！？心配すぎる'), pos('ゆっくり休んでね。待ってる'), neg('体調管理もプロの仕事だと思う')] },
         ],
       },
       {
         label: '事情を話して休む',
-        outcomes: one('しっかり休んで体調が戻った。代役のメンバーが話題になったのは少し悔しい。', { stamina: 25, attention: -4 }),
+        outcomes: one('しっかり休んで体調が戻った。代役のメンバーが話題になったのは少し悔しい。', { stamina: 25, attention: -4 }, [pos('代役の子もよかったけど、やっぱり{nick}が見たい'), pos('ちゃんと休めてえらい')]),
       },
     ],
   },
@@ -238,8 +241,8 @@ export const DAILY_EVENTS: DailyEvent[] = [
       {
         label: '引き受ける',
         outcomes: [
-          { p: 0.75, text: '「奇跡の表紙」と雑誌が重版に！', effect: { attention: 16, visual: 5, stamina: -8 } },
-          { p: 0.25, text: '一部のファンから「方向性が違う」と不満の声も…。', effect: { attention: 6, visual: 5, stamina: -8 } },
+          { p: 0.75, text: '「奇跡の表紙」と雑誌が重版に！', effect: { attention: 16, visual: 5, stamina: -8 }, reactions: [pos('{nick}の表紙、書店で売り切れてた'), pos('奇跡の1枚すぎる'), neu('重版ってすごくない？')] },
+          { p: 0.25, text: '一部のファンから「方向性が違う」と不満の声も…。', effect: { attention: 6, visual: 5, stamina: -8 }, reactions: [pos('表紙きれいだった'), neg('{nick}にはグラビアやってほしくなかったな')] },
         ],
       },
       { label: '今回は見送る', outcomes: one('自分のペースを大切にした。', { stamina: 5 }) },
@@ -255,15 +258,15 @@ export const DAILY_EVENTS: DailyEvent[] = [
       {
         label: '笑顔で否定する',
         outcomes: [
-          { p: 0.7, text: '堂々とした対応が「大人の対応」と好意的に報じられた。', effect: { attention: 6 } },
-          { p: 0.3, text: '発言の一部を切り取られて記事にされてしまった…。', effect: { attention: -8 } },
+          { p: 0.7, text: '堂々とした対応が「大人の対応」と好意的に報じられた。', effect: { attention: 6 }, reactions: [pos('{nick}の記者対応、大人すぎる'), pos('不仲説なんてないって信じてた')] },
+          { p: 0.3, text: '発言の一部を切り取られて記事にされてしまった…。', effect: { attention: -8 }, reactions: [neg('切り取りでも、言い方には気をつけてほしい'), pos('週刊誌の切り取りに騙されないで')] },
         ],
       },
       {
         label: '無言で立ち去る',
         outcomes: [
           { p: 0.6, text: '特に記事にはならなかった。', effect: {} },
-          { p: 0.4, text: '「無言で逃げるように立ち去った」と書かれてしまった。', effect: { attention: -5 } },
+          { p: 0.4, text: '「無言で逃げるように立ち去った」と書かれてしまった。', effect: { attention: -5 }, reactions: [neg('無言で立ち去るのは印象悪いよ'), pos('記者がしつこいだけでしょ')] },
         ],
       },
     ],
@@ -275,7 +278,7 @@ export const DAILY_EVENTS: DailyEvent[] = [
     target: 'none',
     weight: 2,
     choices: [
-      { label: 'SNSで感謝を伝える', outcomes: one('丁寧なお礼の投稿に、ファンからの反響が広がった。', { attention: 6 }) },
+      { label: 'SNSで感謝を伝える', outcomes: one('丁寧なお礼の投稿に、ファンからの反響が広がった。', { attention: 6 }, [pos('{nick}がファンレターのこと投稿してて泣いた'), pos('私も手紙書こう')]) },
       { label: '大切に読み返す', outcomes: one('胸が温かくなり、明日も頑張ろうと思えた。', { stamina: 15 }) },
     ],
   },
@@ -300,9 +303,9 @@ export const DAILY_EVENTS: DailyEvent[] = [
     choices: [
       {
         label: '一人ひとりに全力で神対応',
-        outcomes: one('「また会いに来るね」の声がたくさん聞けた。でもヘトヘト…。', { attention: 9, stamina: -14 }),
+        outcomes: one('「また会いに来るね」の声がたくさん聞けた。でもヘトヘト…。', { attention: 9, stamina: -14 }, [pos('{nick}の握手会、目を見て話してくれて溶けた'), pos('神対応すぎて3周した')]),
       },
-      { label: 'ペース配分を考えて対応', outcomes: one('無難にこなした。', { attention: 3, stamina: -5 }) },
+      { label: 'ペース配分を考えて対応', outcomes: one('無難にこなした。', { attention: 3, stamina: -5 }, [pos('握手会お疲れさま！今日も可愛かった')]) },
     ],
   },
   {
@@ -358,8 +361,8 @@ export const DAILY_EVENTS: DailyEvent[] = [
       {
         label: '引き受ける',
         outcomes: [
-          { p: 0.5, text: 'トークが冴え渡り「レギュラーにして」とリスナーから要望が殺到！', effect: { attention: 14, stamina: -8 } },
-          { p: 0.5, text: '緊張でガチガチだったが、なんとかやりきった。', effect: { attention: 4, stamina: -8 } },
+          { p: 0.5, text: 'トークが冴え渡り「レギュラーにして」とリスナーから要望が殺到！', effect: { attention: 14, stamina: -8 }, reactions: [pos('深夜ラジオの{nick}、トーク面白すぎ。レギュラーにして'), pos('代打なのに神回だった')] },
+          { p: 0.5, text: '緊張でガチガチだったが、なんとかやりきった。', effect: { attention: 4, stamina: -8 }, reactions: [pos('緊張してる{nick}も可愛かった'), neu('次はもっと話してるところが聞きたい')] },
         ],
       },
       { label: '自信がないので断る', outcomes: one('別のメンバーが代打を務めた。', {}) },
@@ -485,10 +488,15 @@ export function applyDailyChoice(state: GameState, pending: PendingChoice, choic
   const good = (e.attention ?? 0) > 0 || (e.affinity ?? 0) > 0 || STATS.some((k) => (e[k] ?? 0) > 0);
   const tone: LogKind = bad ? 'bad' : good ? 'good' : 'info';
   addLog(state, `${ev.title}：${choice.label} → ${text}`, tone);
+  // 世間に知られる出来事なら SNS の反応を付ける (演出のみ)
+  const reactions = outcome.reactions?.length
+    ? eventReactions(state, outcome.reactions, member?.name ?? 'メンバー', rng)
+    : undefined;
   return {
     kind: 'action',
     title: ev.title,
     tone,
     lines: [`「${choice.label}」`, text, ...(deltas.length ? [deltas.join('　')] : [])],
+    reactions,
   };
 }

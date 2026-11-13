@@ -984,3 +984,69 @@ table.members tr.me td {
   padding: 8px;
   font-size: 0.9rem;
 }
+
+/* ---------- v5: みんなの反応 ---------- */
+.reactions {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.reactions-head {
+  font-size: 0.85rem;
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+.reactions ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.reaction {
+  display: flex;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.reaction.neg {
+  border-left-color: var(--bad);
+}
+.reaction.neutral {
+  border-left-color: var(--border);
+}
+.r-icon {
+  flex: none;
+  width: 1.9em;
+  height: 1.9em;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.r-main {
+  min-width: 0;
+  flex: 1;
+}
+.r-meta {
+  font-size: 0.74rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.r-text {
+  margin: 1px 0 2px;
+  overflow-wrap: anywhere;
+}
+.r-likes {
+  font-size: 0.7rem;
+  color: var(--accent);
+}
+.reaction.neg .r-likes {
+  color: var(--muted);
+}

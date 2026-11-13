@@ -1,5 +1,6 @@
 import { doInteract, doLesson, doRest, doSns, networkBonus } from './actions';
 import { applyDailyChoice, rollDailyEvent } from './dailyEvents';
+import { electionReactions, formationReactions, snsReactions } from './reactions';
 import { formatTurn, isElectionTurn, isMonthEnd, isSingleTurn, toDate } from './calendar';
 import {
   ATTENTION_DECAY,
@@ -155,7 +156,7 @@ function playerAction(state: GameState, action: Action, rng: Rng, events: GameEv
       break;
     case 'sns': {
       const result = doSns(state, action.genre, rng);
-      events.push({ kind: 'sns', result });
+      events.push({ kind: 'sns', result, reactions: snsReactions(state, result, rng) });
       state.player.snsStreak++;
       if (result.fired) endGame(state, 'fired', events);
       return;
@@ -209,14 +210,14 @@ export function advanceTurn(prev: GameState, action: Action): TurnResult {
     const e = runElection(state, rng);
     applyElection(state, e);
     state.elections.push(e);
-    events.push({ kind: 'election', election: e });
+    events.push({ kind: 'election', election: e, reactions: electionReactions(state, e, rng) });
   }
 
   if (isSingleTurn(state.turn)) {
     const f = buildFormation(state, rng);
     applyFormation(state, f);
     state.formations.push(f);
-    events.push({ kind: 'formation', formation: f });
+    events.push({ kind: 'formation', formation: f, reactions: formationReactions(state, f, rng) });
   }
 
   const audition = processAudition(state, rng);

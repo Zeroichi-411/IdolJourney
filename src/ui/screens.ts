@@ -12,6 +12,7 @@ import type {
   FormationSlot,
   GameEvent,
   GameState,
+  Reaction,
   SnsResult,
   StatKey,
 } from '../game/types';
@@ -466,6 +467,32 @@ function snsView(r: SnsResult): string {
     <p class="center-text">${lines.join('<br>')}</p>`;
 }
 
+function formatLikes(n: number): string {
+  if (n >= 10000) return `${(n / 10000).toFixed(1).replace(/\.0$/, '')}万`;
+  return n.toLocaleString();
+}
+
+function reactionsView(reactions: Reaction[] | undefined): string {
+  if (!reactions || reactions.length === 0) return '';
+  return `<section class="reactions" aria-label="みんなの反応">
+    <h3 class="reactions-head">📱 みんなの反応</h3>
+    <ul>
+      ${reactions
+        .map(
+          (r) => `<li class="reaction ${r.tone}">
+        <span class="r-icon" aria-hidden="true">${esc(r.icon)}</span>
+        <div class="r-main">
+          <div class="r-meta"><b>${esc(r.name)}</b> <span class="muted">${esc(r.handle)}</span></div>
+          <p class="r-text">${esc(r.text)}</p>
+          <div class="r-likes">♥ ${formatLikes(r.likes)}</div>
+        </div>
+      </li>`,
+        )
+        .join('')}
+    </ul>
+  </section>`;
+}
+
 export function eventModal(state: GameState, ev: GameEvent, remaining: number): string {
   let body = '';
   let tone = 'info';
@@ -518,7 +545,7 @@ export function eventModal(state: GameState, ev: GameEvent, remaining: number): 
   }
   return `<div class="overlay">
     <div class="modal ${tone}" role="dialog" aria-modal="true">
-      <div class="modal-body">${body}</div>
+      <div class="modal-body">${body}${'reactions' in ev ? reactionsView(ev.reactions) : ''}</div>
       <button class="btn primary wide" data-act="next-event" autofocus>${remaining > 1 ? '次へ' : 'OK'}</button>
     </div>
   </div>`;
