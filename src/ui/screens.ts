@@ -126,9 +126,9 @@ function networkLine(state: GameState): string {
 function streakLine(state: GameState): string {
   const n = centerStreak(state, state.playerId);
   if (n === 0) return '';
-  return `<p class="small warn-text">${n}作連続センター中：次のシングル選考は −${Math.round(
+  return `<p class="small warn-text">${n}作連続センター中：次のシングル選考で −${Math.round(
     centerStreakPenaltyRate(n) * 100,
-  )}%（総選挙1位なら影響なし）</p>`;
+  )}%（総選挙の順位には影響しません）</p>`;
 }
 
 function playerCard(state: GameState): string {
