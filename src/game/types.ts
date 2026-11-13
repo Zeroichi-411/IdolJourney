@@ -182,7 +182,7 @@ export type GameEvent =
   | { kind: 'sns'; result: SnsResult; reactions?: Reaction[] }
   | { kind: 'formation'; formation: Formation; reactions?: Reaction[] }
   | { kind: 'election'; election: ElectionResult; reactions?: Reaction[] }
-  | { kind: 'graduation'; names: string[]; lines: string[] }
+  | { kind: 'graduation'; names: string[]; lines: string[]; reactions?: Reaction[] }
   | {
       kind: 'audition';
       generation: number;
@@ -191,5 +191,6 @@ export type GameEvent =
       joinTurn?: number;
       /** 逸材メンバーの名前 */
       prodigyName?: string;
+      reactions?: Reaction[];
     }
-  | { kind: 'ending'; end: GameEnd };
+  | { kind: 'ending'; end: GameEnd; reactions?: Reaction[] };

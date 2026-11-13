@@ -1,6 +1,13 @@
 import { doInteract, doLesson, doRest, doSns, networkBonus } from './actions';
 import { applyDailyChoice, rollDailyEvent } from './dailyEvents';
-import { electionReactions, formationReactions, snsReactions } from './reactions';
+import {
+  auditionReactions,
+  electionReactions,
+  endingReactions,
+  formationReactions,
+  graduationReactions,
+  snsReactions,
+} from './reactions';
 import { formatTurn, isElectionTurn, isMonthEnd, isSingleTurn, toDate } from './calendar';
 import {
   ATTENTION_DECAY,
@@ -103,12 +110,12 @@ export function canGraduate(state: GameState): boolean {
   return toDate(state.turn).year >= GRADUATE_ALLOWED_YEAR && !state.ended;
 }
 
-function endGame(state: GameState, reason: EndReason, events: GameEvent[]): void {
+function endGame(state: GameState, reason: EndReason, events: GameEvent[], rng: Rng): void {
   const p = getPlayer(state);
   p.graduated = true;
   p.graduatedTurn = state.turn;
   state.ended = { reason, turn: state.turn };
-  events.push({ kind: 'ending', end: state.ended });
+  events.push({ kind: 'ending', end: state.ended, reactions: endingReactions(state, state.ended, rng) });
 }
 
 function playerAction(state: GameState, action: Action, rng: Rng, events: GameEvent[]): void {
@@ -158,13 +165,13 @@ function playerAction(state: GameState, action: Action, rng: Rng, events: GameEv
       const result = doSns(state, action.genre, rng);
       events.push({ kind: 'sns', result, reactions: snsReactions(state, result, rng) });
       state.player.snsStreak++;
-      if (result.fired) endGame(state, 'fired', events);
+      if (result.fired) endGame(state, 'fired', events, rng);
       return;
     }
     case 'graduate':
       if (canGraduate(state)) {
         addLog(state, `${getPlayer(state).name}が卒業を発表！`, 'event');
-        endGame(state, 'graduate', events);
+        endGame(state, 'graduate', events, rng);
       }
       break;
     case 'wait':
@@ -203,7 +210,10 @@ export function advanceTurn(prev: GameState, action: Action): TurnResult {
   if (isMonthEnd(state.turn)) {
     const grads = processGraduations(state, rng);
     const ev = graduationEvent(state, grads);
-    if (ev) events.push(ev);
+    if (ev?.kind === 'graduation') {
+      ev.reactions = graduationReactions(state, grads, rng);
+      events.push(ev);
+    }
   }
 
   if (isElectionTurn(state.turn)) {
@@ -221,7 +231,10 @@ export function advanceTurn(prev: GameState, action: Action): TurnResult {
   }
 
   const audition = processAudition(state, rng);
-  if (audition) events.push(audition);
+  if (audition?.kind === 'audition') {
+    audition.reactions = auditionReactions(state, audition, rng);
+    events.push(audition);
+  }
 
   const p = getPlayer(state);
   const ach = state.player.achievements;
@@ -232,7 +245,8 @@ export function advanceTurn(prev: GameState, action: Action): TurnResult {
 
   if (state.turn >= MAX_TURNS) {
     addLog(state, `${formatTurn(state.turn - 1)}をもって${p.name}が卒業`, 'event');
-    endGame(state, 'auto', events);
+    endGame(state, 'auto', events, rng);
+    state.rngState = rng.state;
   } else if (!isPlayerBlocked(state)) {
     // 次のターンの日常イベント
     state.pendingChoice = rollDailyEvent(state, rng);

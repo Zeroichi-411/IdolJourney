@@ -4,13 +4,16 @@ import type { Rng } from './rng';
 import type {
   ElectionResult,
   Formation,
+  GameEnd,
+  GameEvent,
   GameState,
+  Member,
   Reaction,
   ReactionTone,
   SnsGenreId,
   SnsResult,
 } from './types';
-import { getMember, getPlayer } from './util';
+import { activeMembers, getMember, getPlayer } from './util';
 
 /**
  * SNS 上の「みんなの反応」を作る。演出専用で、ゲームの数値は一切変更しない。
@@ -67,12 +70,16 @@ function fill(text: string, ctx: Ctx): string {
   return text.replace(/\{(\w+)\}/g, (m, k: string) => (ctx[k] !== undefined ? String(ctx[k]) : m));
 }
 
-function makeReaction(state: GameState, line: Line, ctx: Ctx, hype: number, rng: Rng): Reaction {
+function makeReaction(state: GameState, line: Line, ctx: Ctx, hype: number, rng: Rng, used: Set<string>): Reaction {
   const tone = line.tone ?? 'pos';
   const p = getPlayer(state);
   const nick = nickOf(p.name, rng);
   const full: Ctx = { ...ctx, nick, name: p.name, group: state.groupName };
-  const name = fill(rng.pick(tone === 'neg' ? NEG_NAMES : FAN_NAMES), full);
+  // 同じ一覧の中で投稿者名が重複しないようにする
+  const pool = (tone === 'neg' ? NEG_NAMES : FAN_NAMES).filter((n) => !used.has(n));
+  const tpl = rng.pick(pool.length > 0 ? pool : tone === 'neg' ? NEG_NAMES : FAN_NAMES);
+  used.add(tpl);
+  const name = fill(tpl, full);
   const handle = `@${rng.pick(HANDLE_WORDS)}_${rng.int(10, 9999)}`;
   const base = 10 + p.attention * 2;
   const likes = Math.max(1, Math.round(base * hype * rng.range(0.3, 1.5) * (tone === 'neg' ? 0.6 : 1)));
@@ -90,9 +97,16 @@ function take(lines: Line[], n: number, rng: Rng): Line[] {
   return rng.shuffle([...lines]).slice(0, Math.max(0, Math.min(n, lines.length)));
 }
 
-function build(state: GameState, groups: Line[][], ctx: Ctx, hype: number, rng: Rng): Reaction[] {
+function build(
+  state: GameState,
+  groups: Line[][],
+  ctx: Ctx,
+  hype: number,
+  rng: Rng,
+  used: Set<string> = new Set(),
+): Reaction[] {
   const lines = groups.flat();
-  return lines.map((l) => makeReaction(state, l, ctx, hype, rng));
+  return lines.map((l) => makeReaction(state, l, ctx, hype, rng, used));
 }
 
 /* ---------- シングルの選抜発表 ---------- */
@@ -285,6 +299,122 @@ export function snsReactions(state: GameState, r: SnsResult, rng: Rng): Reaction
 /** 日常イベントの結果に付いた反応文から、投稿者付きの反応を作る */
 export function eventReactions(state: GameState, lines: Line[], memberName: string, rng: Rng): Reaction[] {
   return build(state, [take(lines, 3, rng)], { member: memberName }, 1.5, rng);
+}
+
+/* ---------- 他メンバーの卒業 ---------- */
+
+const G_BASE = [
+  pos('{member}卒業か…寂しい'),
+  pos('{member}の次の道を応援してる'),
+  neu('{group}もメンバーが減ってきたな'),
+  pos('{member}の笑顔に何度も救われた。ありがとう'),
+];
+const G_ACE = [pos('エースの{member}が卒業って、グループにとって大きすぎる'), neu('{member}抜きの{group}、想像できない')];
+const G_LONG = [pos('{member}、{years}年間お疲れさま')];
+const G_FRIEND = [pos('{nick}と{member}の仲良しコンビ、もう見られないのか…'), pos('{nick}、{member}がいなくなって寂しいだろうな')];
+const G_UNDER_NEG = [neg('最近あまり見かけなかったし、仕方ないのかも')];
+
+function yearsBetween(from: number, to: number): string {
+  return String(Math.max(1, Math.round(((to - from) / 24) * 10) / 10));
+}
+
+export function graduationReactions(state: GameState, graduated: Member[], rng: Rng): Reaction[] {
+  if (graduated.length === 0) return [];
+  const topAttention = new Set(
+    activeMembers(state)
+      .concat(graduated)
+      .filter((m) => !m.isPlayer)
+      .sort((a, b) => b.attention - a.attention)
+      .slice(0, 5)
+      .map((m) => m.id),
+  );
+  const out: Reaction[] = [];
+  const used = new Set<string>();
+  const targets = graduated.slice(0, 2);
+  for (const m of targets) {
+    const ctx: Ctx = { member: m.name, years: yearsBetween(m.joinedTurn, state.turn) };
+    const isAce = (m.lastRank !== undefined && m.lastRank <= 5) || topAttention.has(m.id);
+    const isFriend = (state.player.affinity[m.id] ?? 0) >= 60;
+    const isLong = state.turn - m.joinedTurn >= 24 * 5;
+    const isUnder = m.lastRank === undefined || m.lastRank > SENBATSU_SIZE;
+    const quota = targets.length === 1 ? 3 : 2;
+    const groups: Line[][] = [];
+    if (isFriend) groups.push(take(G_FRIEND, 1, rng));
+    if (isAce) groups.push(take(G_ACE, 1, rng));
+    else if (isLong) groups.push(take(G_LONG, 1, rng));
+    if (!isAce && isUnder && rng.chance(0.3)) groups.push(take(G_UNDER_NEG, 1, rng));
+    const already = groups.flat().length;
+    groups.push(take(G_BASE, Math.max(1, quota - already), rng));
+    out.push(...build(state, groups, ctx, isAce ? 2 : 1, rng, used));
+  }
+  return out.slice(0, 4);
+}
+
+/* ---------- オーディション ---------- */
+
+const A_ANNOUNCE = [
+  pos('{group}もついに{gen}期生か'),
+  neu('応募しようかな…'),
+  pos('新メンバー楽しみ！'),
+  pos('{nick}が先輩になる日が来るのか'),
+];
+const A_ANNOUNCE_NEG = [neg('まだ今のメンバーで見ていたかった')];
+const A_JOIN = [
+  pos('{gen}期生、ビジュアル強すぎない？'),
+  pos('{nick}が先輩になるのエモい'),
+  neu('推し変しちゃうかも…'),
+  pos('{gen}期生の自己紹介動画、全員キャラ立ってる'),
+];
+const A_PRODIGY = [pos('{prodigy}って子、加入前から完成されてる'), pos('{prodigy}の歌、オーディション映像で鳥肌立った')];
+const A_PRODIGY_NEG = [neg('いきなり推されすぎでは？')];
+
+export function auditionReactions(state: GameState, ev: Extract<GameEvent, { kind: 'audition' }>, rng: Rng): Reaction[] {
+  const ctx: Ctx = { gen: ev.generation, prodigy: ev.prodigyName ?? '' };
+  const groups: Line[][] = [];
+  if (ev.announced) {
+    groups.push(take(A_ANNOUNCE, 2, rng));
+    if (rng.chance(0.5)) groups.push(take(A_ANNOUNCE_NEG, 1, rng));
+    else groups.push(take(A_ANNOUNCE.filter((l) => !groups[0].includes(l)), 1, rng));
+    return build(state, groups, ctx, 1, rng);
+  }
+  if (ev.prodigyName) {
+    groups.push(take(A_PRODIGY, 2, rng), take(A_JOIN, 1, rng));
+    if (rng.chance(0.5)) groups.push(take(A_PRODIGY_NEG, 1, rng));
+    return build(state, groups, ctx, 2, rng);
+  }
+  groups.push(take(A_JOIN, 3, rng));
+  return build(state, groups, ctx, 1.5, rng);
+}
+
+/* ---------- 自分の卒業 ---------- */
+
+const END_GRAD = [
+  pos('{nick}卒業発表…まだ受け止められない'),
+  pos('{years}年間ありがとう、{nick}'),
+  pos('卒業コンサート絶対行く'),
+  pos('{nick}の次の夢も全力で応援する'),
+];
+const END_AUTO = [pos('8年間走り抜けた{nick}、本当にかっこよかった')];
+const END_CENTER = [pos('センターに立つ{nick}、一生忘れない')];
+const END_ELECTION = [pos('総選挙1位の景色を見せてくれてありがとう')];
+const END_PLAIN = [pos('選抜でもアンダーでも、ずっと{nick}が一番だった')];
+const END_FIRED = [pos('こんな終わり方、悲しすぎる'), pos('いつかまたどこかで{nick}に会いたい'), neu('{group}、これからどうなるんだろう')];
+const END_FIRED_NEG = [neg('残念だけど、自業自得かな…')];
+
+export function endingReactions(state: GameState, end: GameEnd, rng: Rng): Reaction[] {
+  const a = state.player.achievements;
+  const ctx: Ctx = { years: Math.round(((end.turn + 1) / 24) * 10) / 10 };
+  const groups: Line[][] = [];
+  if (end.reason === 'fired') {
+    groups.push(take(END_FIRED, 2, rng), take(END_FIRED_NEG, 1, rng));
+    return build(state, groups, ctx, 2, rng);
+  }
+  groups.push(take(END_GRAD, end.reason === 'auto' ? 2 : 3, rng));
+  if (end.reason === 'auto') groups.push(END_AUTO);
+  if (a.electionWins > 0) groups.push(END_ELECTION);
+  else if (a.centerCount > 0) groups.push(END_CENTER);
+  else groups.push(END_PLAIN);
+  return build(state, groups, ctx, 3, rng);
 }
 
 export { pos as reactPos, neg as reactNeg, neu as reactNeu };

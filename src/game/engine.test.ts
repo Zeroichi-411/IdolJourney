@@ -636,3 +636,82 @@ describe('SNSのみんなの反応', () => {
     expect(kinds).toEqual(new Set(['formation', 'election', 'sns']));
   });
 });
+
+describe('みんなの反応（卒業・オーディション・加入）', () => {
+  const ok = (rs: { text: string; name: string; handle: string }[]) => {
+    // 投稿者名は同じ一覧の中で重複しない
+    expect(new Set(rs.map((r) => r.name)).size).toBe(rs.length);
+    expect(rs.length).toBeGreaterThanOrEqual(3);
+    expect(rs.length).toBeLessThanOrEqual(4);
+    expect(rs.every((r) => !/[{}]/.test(r.text) && !/[{}]/.test(r.name))).toBe(true);
+  };
+
+  it('他メンバーの卒業: 仲良しだと自分の愛称とメンバー名が入る、数値は変わらない', async () => {
+    const { graduationReactions, givenName } = await import('./reactions');
+    const s = fresh();
+    getPlayer(s).name = '星野 ひかり';
+    const m = activeMembers(s).find((x) => !x.isPlayer)!;
+    s.player.affinity[m.id] = 80;
+    m.graduated = true;
+    const before = JSON.stringify(s);
+    const rs = graduationReactions(s, [m], new Rng(1));
+    expect(JSON.stringify(s)).toBe(before);
+    ok(rs);
+    expect(rs.some((r) => r.text.includes(m.name) && r.text.includes(givenName('星野 ひかり')))).toBe(true);
+    // 2人同時の卒業でも4件まで
+    const m2 = activeMembers(s).find((x) => !x.isPlayer)!;
+    ok(graduationReactions(s, [m, m2], new Rng(2)));
+  });
+
+  it('オーディション開催・加入: 逸材がいれば名前が入る', async () => {
+    const { auditionReactions } = await import('./reactions');
+    const s = fresh();
+    ok(auditionReactions(s, { kind: 'audition', generation: 2, names: [], announced: true }, new Rng(1)));
+    ok(auditionReactions(s, { kind: 'audition', generation: 2, names: ['a'], announced: false }, new Rng(2)));
+    const rs = auditionReactions(
+      s,
+      { kind: 'audition', generation: 2, names: ['天才 さん'], announced: false, prodigyName: '天才 さん' },
+      new Rng(3),
+    );
+    ok(rs);
+    expect(rs.some((r) => r.text.includes('天才 さん'))).toBe(true);
+  });
+
+  it('自分の卒業: 発表・自動は前向きな声だけ、卒業命令は否定的な声も入る', async () => {
+    const { endingReactions } = await import('./reactions');
+    const s = fresh();
+    for (const reason of ['graduate', 'auto'] as const) {
+      for (let seed = 0; seed < 20; seed++) {
+        const rs = endingReactions(s, { reason, turn: 100 }, new Rng(seed));
+        ok(rs);
+        expect(rs.some((r) => r.tone === 'neg')).toBe(false);
+      }
+    }
+    const fired = endingReactions(s, { reason: 'fired', turn: 30 }, new Rng(1));
+    ok(fired);
+    expect(fired.some((r) => r.tone === 'neg')).toBe(true);
+    s.player.achievements.centerCount = 3;
+    expect(endingReactions(s, { reason: 'graduate', turn: 100 }, new Rng(1)).some((r) => r.text.includes('センター'))).toBe(true);
+  });
+
+  it('8年の通しプレイで卒業・オーディション・エンディングに反応が付く', () => {
+    let s = fresh(2024);
+    const kinds = new Set<string>();
+    let i = 0;
+    while (!s.ended) {
+      if (s.pendingChoice) {
+        s = resolveChoice(s, 0).state;
+        continue;
+      }
+      const a: Action = s.player.stamina < 40 ? { type: 'rest' } : { type: 'lesson', stat: (['vocal', 'dance', 'visual'] as const)[i++ % 3] };
+      const r = advanceTurn(s, a);
+      for (const e of r.events) {
+        if ((e.kind === 'graduation' || e.kind === 'audition' || e.kind === 'ending') && e.reactions && e.reactions.length >= 3) {
+          kinds.add(e.kind === 'audition' ? `audition-${e.announced ? 'announce' : 'join'}` : e.kind);
+        }
+      }
+      s = r.state;
+    }
+    expect(kinds).toEqual(new Set(['graduation', 'audition-announce', 'audition-join', 'ending']));
+  });
+});
